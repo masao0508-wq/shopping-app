@@ -16,7 +16,7 @@ app.add_middleware(
 )
 
 # 🔑 LINE設定
-LINE_TOKEN = "2009979239"
+LINE_TOKEN = "Mw8PNPHWkAF4zkPG8NpcbgieKRwABGrd5sGTd1L6ghaQIX9IxGeoVs6dfPPU3AXlcchmDDIrzkPvS2ENTjXUKI7t+psfwzxGQ9bVZVGrBnLWmtn81yWGyasFzXPgAKRHInnTZ2pm219BR9xvOQ/IOgdB04t89/1O/w1cDnyilFU="
 USER_ID = "Ucadf403d7a09594680240fe1b2712bdc"
 
 # 献立候補
