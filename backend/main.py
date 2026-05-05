@@ -59,7 +59,7 @@ def get_menu():
             "fish_count": fish_count
         }
     }
-<div>
+<>
   <input
     value={stock}
     onChange={(e) => setStock(e.target.value)}
@@ -75,4 +75,4 @@ def get_menu():
   >
     献立を作る
   </button>
-</div>
+</>
