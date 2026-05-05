@@ -60,3 +60,34 @@ def get_menu():
         }
     }
 
+from pydantic import BaseModel
+
+class StockRequest(BaseModel):
+    stock: list[str]
+
+@app.post("/menu_from_stock")
+def menu_from_stock(req: StockRequest):
+    days = ["月", "火", "水", "木", "金", "土", "日"]
+
+    # 在庫に応じて簡易フィルタ
+    filtered = []
+    for m in menus:
+        for s in req.stock:
+            if s in m["name"]:
+                filtered.append(m)
+
+    # 一致しなければ通常メニュー
+    if not filtered:
+        filtered = menus
+
+    week = []
+    for i in range(7):
+        m = random.choice(filtered)
+        week.append({
+            "day": days[i],
+            "menu": m["name"]
+        })
+
+    return {
+        "days": week
+    }
