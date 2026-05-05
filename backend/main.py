@@ -6,14 +6,11 @@ import requests
 import os
 from dotenv import load_dotenv
 
-# .env読み込み（ローカル用）
 load_dotenv()
 
 app = FastAPI()
 
-# =========================
-# CORS設定
-# =========================
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,88 +19,96 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =========================
 # 環境変数
-# =========================
 LINE_TOKEN = os.getenv("LINE_TOKEN")
 USER_ID = os.getenv("USER_ID")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# 安全チェック
-if not LINE_TOKEN:
-    print("⚠ LINE_TOKEN 未設定")
-if not USER_ID:
-    print("⚠ USER_ID 未設定")
-
-# =========================
-# 献立候補
-# =========================
+# 献立候補（フォールバック用）
 menus = [
-    {"name": "カレー", "type": "肉", "veg": 1},
-    {"name": "シチュー", "type": "肉", "veg": 2},
-    {"name": "焼きそば", "type": "肉", "veg": 1},
-    {"name": "鍋", "type": "肉", "veg": 3},
-    {"name": "豚の生姜焼き", "type": "肉", "veg": 1},
-    {"name": "鶏の照り焼き", "type": "肉", "veg": 1},
-    {"name": "サバ味噌", "type": "魚", "veg": 1},
-    {"name": "鮭のホイル焼き", "type": "魚", "veg": 1},
+    {"name": "カレー"},
+    {"name": "シチュー"},
+    {"name": "焼きそば"},
+    {"name": "鍋"},
+    {"name": "豚の生姜焼き"},
+    {"name": "鶏の照り焼き"},
+    {"name": "サバ味噌"},
+    {"name": "鮭のホイル焼き"},
 ]
 
 # =========================
-# 通常献立
+# 通常（ランダム）
 # =========================
 @app.get("/menu")
 def get_menu():
-    days = ["月", "火", "水", "木", "金", "土", "日"]
-    week = []
-    veg_total = 0
-    fish_count = 0
+    days = ["月","火","水","木","金","土","日"]
+    week = [{"day": d, "menu": random.choice(menus)["name"]} for d in days]
 
-    for i in range(7):
-        m = random.choice(menus)
-        week.append({"day": days[i], "menu": m["name"]})
-        veg_total += m["veg"]
-        if m["type"] == "魚":
-            fish_count += 1
+    return {"days": week}
 
-    shopping = ["肉", "野菜", "魚", "調味料"]
+# =========================
+# AI献立
+# =========================
+class AIRequest(BaseModel):
+    stock: list[str] = []
+    preference: str = "和食中心"
 
-    return {
-        "days": week,
-        "shopping": shopping,
-        "nutrition": {
-            "veg_score": veg_total,
-            "fish_count": fish_count
-        }
+@app.post("/menu_ai")
+def menu_ai(req: AIRequest):
+    if not GEMINI_API_KEY:
+        return {"error": "GEMINI_API_KEY未設定"}
+
+    prompt = f"""
+あなたは料理のプロです。
+以下の条件で1週間の献立を作成してください。
+
+条件：
+・日本語で
+・月〜日
+・各日1品
+・現実的な料理
+
+在庫：
+{",".join(req.stock)}
+
+好み：
+{req.preference}
+
+出力形式：
+月: ○○
+火: ○○
+...
+日: ○○
+"""
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
+
+    payload = {
+        "contents": [
+            {"parts": [{"text": prompt}]}
+        ]
     }
 
-# =========================
-# 在庫入力モデル
-# =========================
-class StockRequest(BaseModel):
-    stock: list[str]
+    res = requests.post(url, json=payload)
+    data = res.json()
 
-# =========================
-# 在庫から献立生成
-# =========================
-@app.post("/menu_from_stock")
-def menu_from_stock(req: StockRequest):
-    days = ["月", "火", "水", "木", "金", "土", "日"]
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        lines = text.split("\n")
 
-    week = []
-    for i in range(7):
-        m = random.choice(menus)
-        week.append({"day": days[i], "menu": m["name"]})
+        week = []
+        for line in lines:
+            if "：" in line:
+                d, m = line.split("：")
+                week.append({"day": d.strip(), "menu": m.strip()})
 
-    # 必要食材
-    required = ["肉", "野菜", "魚"]
+        return {"days": week}
 
-    # 不足食材
-    missing = [r for r in required if r not in req.stock]
-
-    return {
-        "days": week,
-        "missing": missing
-    }
+    except:
+        # 失敗時はランダム
+        days = ["月","火","水","木","金","土","日"]
+        week = [{"day": d, "menu": random.choice(menus)["name"]} for d in days]
+        return {"days": week}
 
 # =========================
 # LINE通知
@@ -111,9 +116,9 @@ def menu_from_stock(req: StockRequest):
 @app.post("/send_line")
 def send_line(data: dict):
     if not LINE_TOKEN or not USER_ID:
-        return {"error": "LINE設定が不足しています"}
+        return {"error": "LINE設定不足"}
 
-    text = data.get("text", "献立情報")
+    text = data.get("text", "献立")
 
     url = "https://api.line.me/v2/bot/message/push"
 
@@ -124,14 +129,9 @@ def send_line(data: dict):
 
     payload = {
         "to": USER_ID,
-        "messages": [
-            {"type": "text", "text": text}
-        ]
+        "messages": [{"type": "text", "text": text}]
     }
 
     res = requests.post(url, headers=headers, json=payload)
 
-    return {
-        "status": res.status_code,
-        "response": res.text
-    }
+    return {"status": res.status_code}
