@@ -59,3 +59,27 @@ def get_menu():
             "fish_count": fish_count
         }
     }
+@app.post("/menu_from_stock")
+def menu_from_stock(stock: list[str]):
+    candidates = []
+
+    for m in menus:
+        if any(item in m["name"] for item in stock):
+            candidates.append(m)
+
+    if not candidates:
+        candidates = menus
+
+    days = ["月", "火", "水", "木", "金", "土", "日"]
+    week = []
+
+    for i in range(7):
+        m = random.choice(candidates)
+        week.append({
+            "day": days[i],
+            "menu": m["name"]
+        })
+
+    return {
+        "days": week
+    }
