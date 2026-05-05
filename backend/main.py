@@ -59,20 +59,4 @@ def get_menu():
             "fish_count": fish_count
         }
     }
-<>
-  <input
-    value={stock}
-    onChange={(e) => setStock(e.target.value)}
-  />
 
-  <button
-    className="btn"
-    onClick={() => {
-      axios.post("https://shopping-app-8egl.onrender.com/menu_from_stock", {
-        stock: stock
-      })
-    }}
-  >
-    献立を作る
-  </button>
-</>
