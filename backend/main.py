@@ -16,7 +16,7 @@ app.add_middleware(
 )
 
 # 🔑 LINE設定
-LINE_TOKEN = "ここにコピーしたチャネルアクセストークン"
+LINE_TOKEN = "2009979239"
 USER_ID = "Ucadf403d7a09594680240fe1b2712bdc"
 
 # 献立候補
