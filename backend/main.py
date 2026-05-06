@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import requests
 import os
 import json
-import re  # 正規表現を追加
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,16 +28,16 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # JSONの雛形部分を {{ }} に変更しています
+    # Pythonのf-string内で中括弧を扱うため、JSON構造を {{ }} で二重にします
     prompt = f"""
-1週間の献立表をJSONで作ってください。
+1週間の献立表を以下のJSON形式でのみ出力してください。
 条件：
 ・4人家族分（50代夫婦、10代2人）
 ・買い物先：{req.store}
 ・在庫：{", ".join(req.stock)}
-・昼食が必要な曜日：{req.needs_lunch}
+・昼食が必要な曜日ID：{req.needs_lunch}
 
-出力は以下のJSON形式のみ：
+出力フォーマット：
 {{
   "score": 8,
   "alerts": [],
@@ -48,31 +48,40 @@ def generate_menu(req: MenuRequest):
     "lunch": null, 
     "bento_tip": "案", 
     "volume_tip": "案", 
-    "ingredients": [{{ "item": "肉", "amount": "500g" }}] 
+    "ingredients": [{{ "item": "材料", "amount": "分量" }}] 
   }}],
-  "shopping_list": [{{ "item": "肉", "amount": "1kg" }}],
+  "shopping_list": [{{ "item": "品名", "amount": "量" }}],
   "usage_tips": "使い切り案"
 }}
 """
-    # 前回の修正通り v1 を指定
+    # エラーを避けるため v1 を使用
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    # ...以下略
+    
+    # 400エラーを防ぐため、問題の response_mime_type を外した標準的な構造にします
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"response_mime_type": "application/json"}
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
     }
     
     res = requests.post(url, json=payload)
     result = res.json()
     
+    # 開発用ログ
+    print(f"DEBUG: Status Code: {res.status_code}")
+    print(f"DEBUG: Full Response: {result}")
+    
+    if "candidates" not in result:
+        return {{"error": "AIからの応答にデータが含まれていません。"}}
+
     try:
-        # AIの返答からJSONだけを取り出す
+        # 返ってきたテキストを取得
         text = result["candidates"][0]["content"]["parts"][0]["text"]
-        # JSON以外の文字が混ざっていた場合の掃除
+        # AIがJSONの周りに余計な説明（```jsonなど）をつけても大丈夫なように抽出
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
         return json.loads(text)
     except Exception as e:
-        print(f"AI Response Error: {result}")
-        return {"error": f"AIの回答を解析できませんでした。内容: {str(e)}"}
+        print(f"Parse Error: {str(e)}")
+        return {{"error": f"データの解析に失敗しました: {str(e)}"}}
