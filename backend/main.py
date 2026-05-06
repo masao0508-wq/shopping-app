@@ -55,7 +55,7 @@ def generate_menu(req: MenuRequest):
 }}
 """
     # models/ の後に「v1beta」などが混ざっている、あるいは指定順が古い
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     # 2. JSON構造（payload）の括弧を修正
     # 前回の TypeError はここの {{ }} が原因でした。
