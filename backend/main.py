@@ -28,22 +28,35 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
+    # JSONの雛形部分を {{ }} に変更しています
     prompt = f"""
-あなたはプロの主婦。家族4人分（父53歳、母54歳、長男17歳、長女15歳）の献立を作成してください。
-条件：買い物先は「{req.store}」。在庫「{", ".join(req.stock)}」を活用。
-週2回は手抜き料理。翌日の弁当スライドを考慮。10代向けボリューム案を付与。
-昼食が必要な曜日ID: {req.needs_lunch} (0=月)
+1週間の献立表をJSONで作ってください。
+条件：
+・4人家族分（50代夫婦、10代2人）
+・買い物先：{req.store}
+・在庫：{", ".join(req.stock)}
+・昼食が必要な曜日：{req.needs_lunch}
 
-以下のJSON形式のみで出力してください。
+出力は以下のJSON形式のみ：
 {{
-  "score": 0-10,
+  "score": 8,
   "alerts": [],
-  "menu": [{{ "day": "月", "name": "料理名", "is_easy": true, "lunch": "昼食名", "bento_tip": "弁当案", "volume_tip": "10代案", "ingredients": [{{ "item": "肉", "amount": "500g" }}] }}],
+  "menu": [{{ 
+    "day": "月", 
+    "name": "料理名", 
+    "is_easy": false, 
+    "lunch": null, 
+    "bento_tip": "案", 
+    "volume_tip": "案", 
+    "ingredients": [{{ "item": "肉", "amount": "500g" }}] 
+  }}],
   "shopping_list": [{{ "item": "肉", "amount": "1kg" }}],
-  "usage_tips": "使い切りアドバイス"
+  "usage_tips": "使い切り案"
 }}
-# モデル名を gemini-pro に戻すか、バージョン指定を v1 に変更します
+"""
+    # 前回の修正通り v1 を指定
     url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # ...以下略
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"response_mime_type": "application/json"}
