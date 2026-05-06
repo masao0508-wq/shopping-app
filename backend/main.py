@@ -59,9 +59,9 @@ def generate_menu(req: MenuRequest):
 """
 
     try:
-        # 3. 公式ドキュメントに沿った最も標準的なAPI呼び出し
+        # client.models.generate_content の部分を以下のように修正
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='models/gemini-1.5-flash',  # 'models/' を頭に付ける
             contents=prompt,
         )
         
