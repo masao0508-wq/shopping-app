@@ -28,7 +28,7 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # プロンプト（AIへの命令）の中だけ、JSON構造のために {{ }} を使います
+    # AIへのプロンプト
     prompt = f"""
 1週間の献立表を以下のJSON形式でのみ出力してください。
 条件：
@@ -54,10 +54,11 @@ def generate_menu(req: MenuRequest):
   "usage_tips": "使い切り案"
 }}
 """
-    # APIのURLを確実に存在するパスに修正
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # 1. URLを最新のエイリアスに変更
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
     
-    # Pythonとしての辞書データなので、ここは { } (一重) である必要があります
+    # 2. JSON構造（payload）の括弧を修正
+    # 前回の TypeError はここの {{ }} が原因でした。
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
@@ -65,26 +66,26 @@ def generate_menu(req: MenuRequest):
     }
     
     try:
-        # payload変数をそのまま渡します
-        res = requests.post(url, json=payload)
+        # APIリクエスト
+        res = requests.post(url, json=payload, timeout=30)
         result = res.json()
         
-        # エラーログ出力（デバッグ用）
         if res.status_code != 200:
-            print(f"API Error: {result}")
+            print(f"Gemini API Error: {result}")
             return {"error": f"APIエラーが発生しました(Code:{res.status_code})"}
 
-        if "candidates" not in result:
-            return {"error": "AIから有効な回答が得られませんでした。"}
-
-        text = result["candidates"][0]["content"]["parts"][0]["text"]
-        
-        # JSON部分だけを抽出
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-        return json.loads(text)
+        # 3. 応答からテキストを抽出
+        if "candidates" in result and result["candidates"]:
+            text = result["candidates"][0]["content"]["parts"][0]["text"]
+            
+            # 余計な文字（```json など）を排除してJSON本体だけを取り出す
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+            return json.loads(text)
+        else:
+            return {"error": "AIからの応答が空でした。"}
 
     except Exception as e:
-        print(f"System Error: {str(e)}")
+        print(f"ASGI Application Error Detail: {str(e)}")
         return {"error": f"システムエラー: {str(e)}"}
