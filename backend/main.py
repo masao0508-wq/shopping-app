@@ -59,9 +59,9 @@ def generate_menu(req: MenuRequest):
 """
 
     try:
-        # client.models.generate_content の部分を以下のように修正
+        # モデル名を 'gemini-1.5-flash' から 'gemini-pro' に変更
         response = client.models.generate_content(
-            model='models/gemini-1.5-flash',  # 'models/' を頭に付ける
+            model='gemini-pro', 
             contents=prompt,
         )
         
