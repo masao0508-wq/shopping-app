@@ -5,13 +5,13 @@ import os
 import json
 import re
 from dotenv import load_dotenv
-# 1. Google公式のSDKをインポート
+# Google公式SDK
 from google import genai
 
 load_dotenv()
 app = FastAPI()
 
-# CORS設定：Vercelからの通信を許可
+# CORS設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,8 +20,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. 公式クライアントを初期化（自動的に環境変数 GEMINI_API_KEY を読み込みます）
-client = genai.Client()
+# 【重要】api_version="v1" を指定して、不安定な v1beta を回避します
+# これにより、リンク先の記事と同様に「安定版」の窓口を使用します
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    api_version="v1"
+)
 
 class MenuRequest(BaseModel):
     stock: list = []
@@ -31,7 +35,7 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # AIへの指示（プロンプト）
+    # AIへのプロンプト
     prompt = f"""
 1週間の献立表を以下のJSON形式でのみ出力してください。
 条件：
@@ -59,9 +63,9 @@ def generate_menu(req: MenuRequest):
 """
 
     try:
-        # モデル名を 'gemini-1.5-flash' から 'gemini-pro' に変更
+        # モデル名は安定版で確実に存在する 'gemini-1.5-flash' を使用
         response = client.models.generate_content(
-            model='gemini-pro', 
+            model='gemini-1.5-flash',
             contents=prompt,
         )
         
@@ -74,7 +78,7 @@ def generate_menu(req: MenuRequest):
         return json.loads(text)
 
     except Exception as e:
-        print(f"--- System Error ---")
-        print(f"Error Type: {type(e).__name__}")
-        print(f"Error Message: {str(e)}")
-        return {"error": f"エラーが発生しました: {str(e)}"}
+        # ログに詳細なエラーを表示
+        print(f"--- Gemini API Error Details ---")
+        print(f"Error: {str(e)}")
+        return {"error": f"API実行エラー: {str(e)}"}
