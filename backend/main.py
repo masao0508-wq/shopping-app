@@ -69,8 +69,16 @@ def generate_menu(req: MenuRequest):
     }
     
     res = requests.post(url, json=payload)
+    
     try:
-        content = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-        return json.loads(content)
-    except:
-        return {"error": "AIの回答取得に失敗しました。"}
+        # AIの回答からJSON部分だけを抽出する処理
+        content = result["candidates"][0]["content"]["parts"][0]["text"]
+        # ```json ... ``` のような装飾を消す
+        clean_content = content.replace("```json", "").replace("```", "").strip()
+        return json.loads(clean_content)
+    except Exception as e:
+        # 何が起きたかログに出力する
+        print(f"Error details: {e}")
+        print(f"AI raw response: {result}")
+        return {"error": f"AI解析エラー: {str(e)}。もう一度お試しください。"}
+        
