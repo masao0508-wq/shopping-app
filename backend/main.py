@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
+# CORS設定：Vercelからの通信を許可
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,7 +29,7 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # AIへのプロンプト
+    # AIへの指示（プロンプト）
     prompt = f"""
 1週間の献立表を以下のJSON形式でのみ出力してください。
 条件：
@@ -54,29 +55,36 @@ def generate_menu(req: MenuRequest):
   "usage_tips": "使い切り案"
 }}
 """
-    # models/ の後に「v1beta」などが混ざっている、あるいは指定順が古い
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 
+    # 【重要】最新の安定版URL形式 (v1) を使用
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
     payload = {
-        "contents": [
-            {"parts": [{"text": prompt}]}
-        ]
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
     }
     
-    try:
-        # APIリクエスト
-        res = requests.post(url, json=payload, timeout=30)
-        result = res.json()
-        
-        if res.status_code != 200:
-            print(f"Gemini API Error: {result}")
-            return {"error": f"APIエラーが発生しました(Code:{res.status_code})"}
+    headers = {'Content-Type': 'application/json'}
 
-        # 3. 応答からテキストを抽出
-        if "candidates" in result and result["candidates"]:
+    try:
+        # APIにリクエストを送信
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        # 404が出た場合に備えて詳細をログ出力
+        if response.status_code != 200:
+            print(f"--- Gemini API Error Detail ---")
+            print(f"Status Code: {response.status_code}")
+            print(f"Response Body: {response.text}")
+            return {"error": f"APIエラー(Code:{response.status_code})。詳細はRenderのログを確認してください。"}
+
+        result = response.json()
+        
+        # AIの回答テキストを取得
+        if "candidates" in result and len(result["candidates"]) > 0:
             text = result["candidates"][0]["content"]["parts"][0]["text"]
             
-            # 余計な文字（```json など）を排除してJSON本体だけを取り出す
+            # JSON部分を抽出（マークダウンの ```json ... ``` を除去）
             match = re.search(r'\{.*\}', text, re.DOTALL)
             if match:
                 return json.loads(match.group())
@@ -85,5 +93,7 @@ def generate_menu(req: MenuRequest):
             return {"error": "AIからの応答が空でした。"}
 
     except Exception as e:
-        print(f"ASGI Application Error Detail: {str(e)}")
-        return {"error": f"システムエラー: {str(e)}"}
+        print(f"--- System Error ---")
+        print(f"Error Type: {type(e).__name__}")
+        print(f"Error Message: {str(e)}")
+        return {"error": "システムエラーが発生しました。"}
