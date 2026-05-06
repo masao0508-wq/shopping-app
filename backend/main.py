@@ -56,8 +56,9 @@ def generate_menu(req: MenuRequest):
 }}
 """
 
-    # 【重要】最新の安定版URL形式 (v1) を使用
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # 修正前：url = f"https://generativelanguage.googleapis.com/v1/models/..."
+# 修正後（これにしてください）：
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
         "contents": [{
