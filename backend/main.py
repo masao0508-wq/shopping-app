@@ -28,7 +28,7 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # プロンプト内のJSON構造は {{ }} (二重) にする必要があります
+    # プロンプト（AIへの命令）の中だけ、JSON構造のために {{ }} を使います
     prompt = f"""
 1週間の献立表を以下のJSON形式でのみ出力してください。
 条件：
@@ -54,28 +54,32 @@ def generate_menu(req: MenuRequest):
   "usage_tips": "使い切り案"
 }}
 """
-    # URLを最も汎用的な 'v1beta' かつモデル名を修正
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
+    # APIのURLを確実に存在するパスに修正
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
-    payload = {{
-        "contents": [{{
-            "parts": [{{ "text": prompt }}]
-        }}]
-    }}
+    # Pythonとしての辞書データなので、ここは { } (一重) である必要があります
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
     
-    # 実際のリクエスト実行（エラーハンドリングを強化）
     try:
-        # Pythonコードとしての辞書なので、ここは { } (一重) です
-        res = requests.post(url, json={
-            "contents": [{"parts": [{"text": prompt}]}]
-        })
+        # payload変数をそのまま渡します
+        res = requests.post(url, json=payload)
         result = res.json()
         
+        # エラーログ出力（デバッグ用）
+        if res.status_code != 200:
+            print(f"API Error: {result}")
+            return {"error": f"APIエラーが発生しました(Code:{res.status_code})"}
+
         if "candidates" not in result:
-            print(f"Gemini Error: {result}")
-            return {"error": "AIが回答を拒絶しました。APIキーまたはモデル設定を確認してください。"}
+            return {"error": "AIから有効な回答が得られませんでした。"}
 
         text = result["candidates"][0]["content"]["parts"][0]["text"]
+        
+        # JSON部分だけを抽出
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
@@ -83,4 +87,4 @@ def generate_menu(req: MenuRequest):
 
     except Exception as e:
         print(f"System Error: {str(e)}")
-        return {"error": f"システムエラーが発生しました: {str(e)}"}
+        return {"error": f"システムエラー: {str(e)}"}
