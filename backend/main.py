@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import requests
 import os
 import json
 import re
 from dotenv import load_dotenv
+# 1. Google公式のSDKをインポート
+from google import genai
 
 load_dotenv()
 app = FastAPI()
@@ -19,7 +20,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# 2. 公式クライアントを初期化（自動的に環境変数 GEMINI_API_KEY を読み込みます）
+client = genai.Client()
 
 class MenuRequest(BaseModel):
     stock: list = []
@@ -56,48 +58,23 @@ def generate_menu(req: MenuRequest):
 }}
 """
 
-    # 修正前：url = f"https://generativelanguage.googleapis.com/v1/models/..."
-# 修正後（これにしてください）：
-# 以下の1行に差し替えてください
-    # v1beta を v1 に変えるのが最大のポイントです
-    # 以下のURLに書き換えてください
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
-    
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
-    }
-    
-    headers = {'Content-Type': 'application/json'}
-
     try:
-        # APIにリクエストを送信
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        # 3. 公式ドキュメントに沿った最も標準的なAPI呼び出し
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=prompt,
+        )
         
-        # 404が出た場合に備えて詳細をログ出力
-        if response.status_code != 200:
-            print(f"--- Gemini API Error Detail ---")
-            print(f"Status Code: {response.status_code}")
-            print(f"Response Body: {response.text}")
-            return {"error": f"APIエラー(Code:{response.status_code})。詳細はRenderのログを確認してください。"}
-
-        result = response.json()
+        text = response.text
         
-        # AIの回答テキストを取得
-        if "candidates" in result and len(result["candidates"]) > 0:
-            text = result["candidates"][0]["content"]["parts"][0]["text"]
-            
-            # JSON部分を抽出（マークダウンの ```json ... ``` を除去）
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            if match:
-                return json.loads(match.group())
-            return json.loads(text)
-        else:
-            return {"error": "AIからの応答が空でした。"}
+        # JSON部分を抽出
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+        return json.loads(text)
 
     except Exception as e:
         print(f"--- System Error ---")
         print(f"Error Type: {type(e).__name__}")
         print(f"Error Message: {str(e)}")
-        return {"error": "システムエラーが発生しました。"}
+        return {"error": f"エラーが発生しました: {str(e)}"}
