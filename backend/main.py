@@ -28,7 +28,7 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # Pythonのf-string内で中括弧を扱うため、JSON構造を {{ }} で二重にします
+    # プロンプト内のJSON構造は {{ }} (二重) にする必要があります
     prompt = f"""
 1週間の献立表を以下のJSON形式でのみ出力してください。
 条件：
@@ -54,34 +54,33 @@ def generate_menu(req: MenuRequest):
   "usage_tips": "使い切り案"
 }}
 """
-    # エラーを避けるため v1 を使用
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # URLを最も汎用的な 'v1beta' かつモデル名を修正
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
     
-    # 400エラーを防ぐため、問題の response_mime_type を外した標準的な構造にします
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
-    }
+    payload = {{
+        "contents": [{{
+            "parts": [{{ "text": prompt }}]
+        }}]
+    }}
     
-    res = requests.post(url, json=payload)
-    result = res.json()
-    
-    # 開発用ログ
-    print(f"DEBUG: Status Code: {res.status_code}")
-    print(f"DEBUG: Full Response: {result}")
-    
-    if "candidates" not in result:
-        return {{"error": "AIからの応答にデータが含まれていません。"}}
-
+    # 実際のリクエスト実行（エラーハンドリングを強化）
     try:
-        # 返ってきたテキストを取得
+        # Pythonコードとしての辞書なので、ここは { } (一重) です
+        res = requests.post(url, json={
+            "contents": [{"parts": [{"text": prompt}]}]
+        })
+        result = res.json()
+        
+        if "candidates" not in result:
+            print(f"Gemini Error: {result}")
+            return {"error": "AIが回答を拒絶しました。APIキーまたはモデル設定を確認してください。"}
+
         text = result["candidates"][0]["content"]["parts"][0]["text"]
-        # AIがJSONの周りに余計な説明（```jsonなど）をつけても大丈夫なように抽出
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
         return json.loads(text)
+
     except Exception as e:
-        print(f"Parse Error: {str(e)}")
-        return {{"error": f"データの解析に失敗しました: {str(e)}"}}
+        print(f"System Error: {str(e)}")
+        return {"error": f"システムエラーが発生しました: {str(e)}"}
