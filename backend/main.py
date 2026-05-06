@@ -42,8 +42,8 @@ def generate_menu(req: MenuRequest):
   "shopping_list": [{{ "item": "肉", "amount": "1kg" }}],
   "usage_tips": "使い切りアドバイス"
 }}
-"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+# モデル名を gemini-pro に戻すか、バージョン指定を v1 に変更します
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"response_mime_type": "application/json"}
