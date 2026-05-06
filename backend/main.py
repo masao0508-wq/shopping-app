@@ -58,7 +58,8 @@ def generate_menu(req: MenuRequest):
 
     # 修正前：url = f"https://generativelanguage.googleapis.com/v1/models/..."
 # 修正後（これにしてください）：
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
+# 以下の1行に差し替えてください
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
         "contents": [{
