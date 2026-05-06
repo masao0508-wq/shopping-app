@@ -54,7 +54,7 @@ def generate_menu(req: MenuRequest):
   "usage_tips": "使い切り案"
 }}
 """
-    # 以下の1行に絞って書き換えてみてください
+    # models/ の後に「v1beta」などが混ざっている、あるいは指定順が古い
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     # 2. JSON構造（payload）の括弧を修正
