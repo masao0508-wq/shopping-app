@@ -21,10 +21,10 @@ app.add_middleware(
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 class MenuRequest(BaseModel):
-    stock: list = []
-    store: str = "ロピア"
-    needs_lunch: list = []
-    use_bento: bool = True
+    store: str
+    stock: list
+    needs_lunch: list
+    use_bento: bool
 
 @app.get("/")
 def read_root():
@@ -32,39 +32,43 @@ def read_root():
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
+    # App.jsのUI表示に必要な項目を網羅したプロンプト
     model_id = "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     headers = {"Content-Type": "application/json"}
     
-    # フロントエンドの App.js で .map() される可能性が高いキー名を網羅
+    # フロントエンドのループ処理に合わせてJSON構造を指示
     prompt_text = f"""
-    あなたは優秀な献立作成アシスタントです。
-    4人家族（50代夫婦、10代2人）の1週間の献立を作成し、以下のJSON構造で返してください。
-    
-    条件：
-    - 店: {req.store}
-    - 在庫: {', '.join(req.stock)}
-    - 栄養スコアを各日に設定すること。
+    あなたは献立作成のプロです。4人家族（50代夫婦、10代2人）の1週間の献立を作成してください。
+    スーパー: {req.store}
+    在庫食材: {', '.join(req.stock)}
 
-    【必須JSON構造】
+    必ず以下のJSON形式のみで回答してください。
     {{
-      "weekly_menu": [
+      "score": 9,
+      "usage_tips": "在庫の〇〇を使い切り、節約と健康を両立しました。",
+      "menu": [
         {{
-          "day": "月曜日",
-          "menu": "メインの献立名",
-          "side_dish": "副菜",
-          "score": 95,
-          "ingredients": ["材料1", "材料2"],
-          "advice": "時短のコツ"
+          "day": "月",
+          "name": "メイン料理名",
+          "is_easy": true,
+          "bento_tip": "夕食の残りをリメイクして入れるコツ",
+          "volume_tip": "10代向けにボリュームを出す工夫"
+        }},
+        {{
+          "day": "火",
+          "name": "メイン料理名",
+          "is_easy": false,
+          "bento_tip": "冷めても美味しいおかずの詰め方",
+          "volume_tip": "食べ盛りも満足する副菜の提案"
         }}
+        // 日曜日まで7日間分必ず作成
       ],
-      "total_score": 92,
-      "shopping_list": ["買うもの1", "買うもの2"]
+      "shopping_list": [
+        {{ "item": "食材名", "amount": "数量（例: 200g, 1袋）" }}
+      ]
     }}
-    
-    ※weekly_menuは月曜から日曜まで7日分含めてください。
-    ※JSON以外のテキストは一切含めないでください。
     """
     
     payload = {
@@ -72,27 +76,30 @@ def generate_menu(req: MenuRequest):
     }
 
     try:
-        # AIの生成待ちを考慮し、タイムアウトを長めに設定
         response = requests.post(url, headers=headers, json=payload, timeout=60)
         res_data = response.json()
 
         if response.status_code != 200:
-            return {"error": "Gemini API Error", "detail": res_data}
+            return {"error": "API Error", "message": res_data.get("error", {}).get("message")}
 
         raw_text = res_data['candidates'][0]['content']['parts'][0]['text']
         
-        # JSON部分を抽出
+        # JSON部分を正確に抽出
         json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
         if json_match:
             data = json.loads(json_match.group())
             
-            # フロントエンドが 'menu' というキー名で map している場合への保険
-            if "weekly_menu" in data and "menu" not in data:
-                data["menu"] = data["weekly_menu"]
-                
+            # App.js の needs_lunch 状態に基づき lunch キーを付与
+            days_labels = ["月", "火", "水", "木", "金", "土", "日"]
+            for i, menu_item in enumerate(data.get("menu", [])):
+                if i in req.needs_lunch:
+                    menu_item["lunch"] = "手軽に作れるボリュームランチ"
+                else:
+                    menu_item["lunch"] = None
+            
             return data
-        
+            
         return json.loads(raw_text)
 
     except Exception as e:
-        return {"error": "Data Processing Error", "message": str(e)}
+        return {"error": "Internal Error", "message": str(e)}
