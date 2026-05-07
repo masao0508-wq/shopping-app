@@ -32,50 +32,49 @@ def read_root():
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # ご指摘の通り、使用可能な最新モデル gemini-2.5-flash を指定
-    # 安定性を考慮し、最新の v1 エンドポイントを使用
-    model_id = "gemini-2.5-flash"
-    url = f"https://generativelanguage.googleapis.com/v1/models/{model_id}:generateContent"
+    # 最新モデル gemini-2.5-flash に合わせ、エンドポイントを v1beta に設定
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": GEMINI_API_KEY
+        "Content-Type": "application/json"
     }
     
-    # 400エラーを防ぐため、リクエスト構造を最新のAPI仕様に準拠
-    prompt = f"4人家族（50代夫婦、10代2人）の1週間の献立表をJSON形式で作成してください。店:{req.store}、在庫:{', '.join(req.stock)}。必ず日本語で出力してください。"
+    # 400エラーを回避するため、極めてシンプルなプロンプト構成にします
+    prompt_text = f"4人家族、1週間の献立表をJSONで作成。店:{req.store}、在庫:{', '.join(req.stock)}。必ず日本語で。"
     
+    # Google API が要求する最も基本的なペイロード構造
     payload = {
         "contents": [
             {
-                "parts": [{"text": prompt}]
+                "parts": [
+                    {"text": prompt_text}
+                ]
             }
-        ],
-        "generationConfig": {
-            "response_mime_type": "application/json"
-        }
+        ]
     }
 
     try:
+        # ヘッダーではなくURLにキーを含める形式（最もエラーが出にくい）で試行
         response = requests.post(url, headers=headers, json=payload)
         res_data = response.json()
 
-        # 失敗時の原因特定のため、詳細をレスポンスに含める
         if response.status_code != 200:
+            # Renderのログに詳細を出すためのプリント
+            print(f"DEBUG: API Response Error: {res_data}")
             return {
                 "error": f"API Error {response.status_code}",
-                "message": res_data.get("error", {}).get("message", "Unknown error"),
-                "model_used": model_id
+                "message": res_data.get("error", {}).get("message", "Invalid Request"),
+                "details": res_data.get("error", {}).get("status", "Unknown Status")
             }
 
-        # レスポンスからテキスト部分を抽出
+        # テキスト抽出
         text = res_data['candidates'][0]['content']['parts'][0]['text']
         
-        # JSONを抽出してパース
+        # JSONを抽出
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
-        return json.loads(text)
+        return {"raw_text": text}
 
     except Exception as e:
-        return {"error": "Internal Server Error", "detail": str(e)}
+        return {"error": "Internal Error", "message": str(e)}
