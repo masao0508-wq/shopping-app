@@ -28,25 +28,29 @@ class MenuRequest(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"status": "ok", "message": "Backend is running"}
+    return {"status": "ok", "api_key_loaded": bool(GEMINI_API_KEY)}
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # モデルを 1.5-flash に戻し、URLを v1 に固定（安定版）
-    url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
+    # ご指摘の通り、使用可能な最新モデル gemini-2.5-flash を指定
+    # 安定性を考慮し、最新の v1 エンドポイントを使用
+    model_id = "gemini-2.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1/models/{model_id}:generateContent"
     
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": GEMINI_API_KEY
     }
     
-    # プロンプト（文字化け対策のため、シンプルな記述を心がけています）
-    prompt = f"Create a 7-day meal plan in JSON. Family of 4, Store: {req.store}, Stock: {', '.join(req.stock)}. Use Japanese for food names."
+    # 400エラーを防ぐため、リクエスト構造を最新のAPI仕様に準拠
+    prompt = f"4人家族（50代夫婦、10代2人）の1週間の献立表をJSON形式で作成してください。店:{req.store}、在庫:{', '.join(req.stock)}。必ず日本語で出力してください。"
     
     payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }],
+        "contents": [
+            {
+                "parts": [{"text": prompt}]
+            }
+        ],
         "generationConfig": {
             "response_mime_type": "application/json"
         }
@@ -56,17 +60,22 @@ def generate_menu(req: MenuRequest):
         response = requests.post(url, headers=headers, json=payload)
         res_data = response.json()
 
+        # 失敗時の原因特定のため、詳細をレスポンスに含める
         if response.status_code != 200:
-            return {"error": f"API Error {response.status_code}", "detail": res_data}
+            return {
+                "error": f"API Error {response.status_code}",
+                "message": res_data.get("error", {}).get("message", "Unknown error"),
+                "model_used": model_id
+            }
 
-        # Gemini 2.0系のレスポンス構造からテキストを抽出
+        # レスポンスからテキスト部分を抽出
         text = res_data['candidates'][0]['content']['parts'][0]['text']
         
-        # JSON部分を抽出して返却
+        # JSONを抽出してパース
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
         return json.loads(text)
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Internal Server Error", "detail": str(e)}
