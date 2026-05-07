@@ -32,45 +32,34 @@ def read_root():
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # 最新モデル gemini-2.5-flash に合わせ、エンドポイントを v1beta に設定
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # 503回避のため、2.5より負荷が分散されている 2.0系Liteモデル を使用
+    # これでも503が出る場合は 'gemini-1.5-flash' に戻すのも手です
+    model_id = "gemini-2.0-flash-lite-preview-02-05"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     headers = {
         "Content-Type": "application/json"
     }
     
-    # 400エラーを回避するため、極めてシンプルなプロンプト構成にします
+    # プロンプトはそのまま
     prompt_text = f"4人家族、1週間の献立表をJSONで作成。店:{req.store}、在庫:{', '.join(req.stock)}。必ず日本語で。"
     
-    # Google API が要求する最も基本的なペイロード構造
     payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt_text}
-                ]
-            }
-        ]
+        "contents": [{"parts": [{"text": prompt_text}]}]
     }
 
     try:
-        # ヘッダーではなくURLにキーを含める形式（最もエラーが出にくい）で試行
         response = requests.post(url, headers=headers, json=payload)
         res_data = response.json()
 
         if response.status_code != 200:
-            # Renderのログに詳細を出すためのプリント
             print(f"DEBUG: API Response Error: {res_data}")
-            return {
-                "error": f"API Error {response.status_code}",
-                "message": res_data.get("error", {}).get("message", "Invalid Request"),
-                "details": res_data.get("error", {}).get("status", "Unknown Status")
-            }
+            # 503の場合はユーザーに「混雑中」と伝える
+            if response.status_code == 503:
+                return {"error": "GoogleのAIが混雑しています。1分後に再度お試しください。"}
+            return {"error": f"API Error {response.status_code}", "message": res_data.get("error", {}).get("message")}
 
-        # テキスト抽出
         text = res_data['candidates'][0]['content']['parts'][0]['text']
-        
-        # JSONを抽出
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
