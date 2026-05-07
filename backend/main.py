@@ -37,36 +37,34 @@ def generate_menu(req: MenuRequest):
     
     headers = {"Content-Type": "application/json"}
     
-    # フロントエンドの変数名（dish, score, shopping_listなど）に厳密に合わせます
+    # フロントエンドの App.js で .map() される可能性が高いキー名を網羅
     prompt_text = f"""
-    4人家族の1週間の献立を作成し、以下のJSON形式で返してください。
-    スーパー: {req.store}
-    在庫: {', '.join(req.stock)}
+    あなたは優秀な献立作成アシスタントです。
+    4人家族（50代夫婦、10代2人）の1週間の献立を作成し、以下のJSON構造で返してください。
+    
+    条件：
+    - 店: {req.store}
+    - 在庫: {', '.join(req.stock)}
+    - 栄養スコアを各日に設定すること。
 
-    【出力JSON形式】
+    【必須JSON構造】
     {{
-      "menu": [
+      "weekly_menu": [
         {{
           "day": "月曜日",
-          "dish": "メイン料理名",
-          "side": "副菜名",
-          "nutrition_score": 90,
+          "menu": "メインの献立名",
+          "side_dish": "副菜",
+          "score": 95,
           "ingredients": ["材料1", "材料2"],
-          "comment": "時短のコツ"
-        }},
-        {{
-          "day": "火曜日",
-          "dish": "メイン料理名",
-          "side": "副菜名",
-          "nutrition_score": 85,
-          "ingredients": ["材料1", "材料2"],
-          "comment": "栄養ポイント"
+          "advice": "時短のコツ"
         }}
-        // 日曜日まで7日分必ず作成すること
       ],
-      "total_nutrition_avg": 88,
-      "shopping_list": ["食材1", "食材2"]
+      "total_score": 92,
+      "shopping_list": ["買うもの1", "買うもの2"]
     }}
+    
+    ※weekly_menuは月曜から日曜まで7日分含めてください。
+    ※JSON以外のテキストは一切含めないでください。
     """
     
     payload = {
@@ -74,20 +72,27 @@ def generate_menu(req: MenuRequest):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        # AIの生成待ちを考慮し、タイムアウトを長めに設定
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
         res_data = response.json()
 
         if response.status_code != 200:
-            return {"error": "API Error", "detail": res_data}
+            return {"error": "Gemini API Error", "detail": res_data}
 
         raw_text = res_data['candidates'][0]['content']['parts'][0]['text']
         
-        # 不要な記号を削り、純粋なJSONのみを抽出
+        # JSON部分を抽出
         json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
         if json_match:
-            return json.loads(json_match.group())
+            data = json.loads(json_match.group())
+            
+            # フロントエンドが 'menu' というキー名で map している場合への保険
+            if "weekly_menu" in data and "menu" not in data:
+                data["menu"] = data["weekly_menu"]
+                
+            return data
         
         return json.loads(raw_text)
 
     except Exception as e:
-        return {"error": "Backend Error", "message": str(e)}
+        return {"error": "Data Processing Error", "message": str(e)}
