@@ -37,31 +37,35 @@ def generate_menu(req: MenuRequest):
     
     headers = {"Content-Type": "application/json"}
     
-    # 指示を具体的にし、栄養スコアや買い物リストの計算をAIに命じます
+    # フロントエンドの変数名（dish, score, shopping_listなど）に厳密に合わせます
     prompt_text = f"""
-    あなたはプロの献立アドバイザーです。4人家族（50代夫婦、10代2人）向けに
-    {req.store}で買える食材を活かした1週間の献立を作成してください。
-    
-    【条件】
-    - 在庫食材を優先して使うこと: {', '.join(req.stock)}
-    - お弁当が必要な場合、夕食の残りを活用する工夫を含める。
-    - 栄養バランス（PFCバランス、ビタミン、塩分）を考慮する。
-    
-    必ず以下のJSON形式でのみ回答してください。
+    4人家族の1週間の献立を作成し、以下のJSON形式で返してください。
+    スーパー: {req.store}
+    在庫: {', '.join(req.stock)}
+
+    【出力JSON形式】
     {{
       "menu": [
-        {{ 
-          "day": "月曜日", 
-          "dish": "メイン料理名", 
+        {{
+          "day": "月曜日",
+          "dish": "メイン料理名",
           "side": "副菜名",
-          "nutrition_score": 95, 
+          "nutrition_score": 90,
           "ingredients": ["材料1", "材料2"],
-          "comment": "奥様への一言アドバイス（時短ポイントなど）"
+          "comment": "時短のコツ"
+        }},
+        {{
+          "day": "火曜日",
+          "dish": "メイン料理名",
+          "side": "副菜名",
+          "nutrition_score": 85,
+          "ingredients": ["材料1", "材料2"],
+          "comment": "栄養ポイント"
         }}
-        // これを日曜日まで繰り返す
+        // 日曜日まで7日分必ず作成すること
       ],
-      "total_nutrition_avg": 90,
-      "shopping_list": ["食材名(数量)", "食材名(数量)"]
+      "total_nutrition_avg": 88,
+      "shopping_list": ["食材1", "食材2"]
     }}
     """
     
@@ -70,22 +74,20 @@ def generate_menu(req: MenuRequest):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         res_data = response.json()
 
         if response.status_code != 200:
-            return {"error": f"API Error {response.status_code}", "message": res_data.get("error", {}).get("message")}
+            return {"error": "API Error", "detail": res_data}
 
         raw_text = res_data['candidates'][0]['content']['parts'][0]['text']
         
-        # AIがJSON以外の文字を混ぜても抽出できるようにする
-        match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-        if match:
-            parsed_data = json.loads(match.group())
-            # フロントエンドの期待する構造に微調整（必要に応じて）
-            return parsed_data
+        # 不要な記号を削り、純粋なJSONのみを抽出
+        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
         
         return json.loads(raw_text)
 
     except Exception as e:
-        return {"error": "Processing Error", "message": str(e)}
+        return {"error": "Backend Error", "message": str(e)}
