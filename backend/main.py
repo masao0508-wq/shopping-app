@@ -33,8 +33,8 @@ def read_root():
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
    # ここを Lite に変更
-model_id = "gemini-2.5-flash-lite"
-url = f"https://generativelanguage.googleapis.com/v1/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
+    model_id = "gemini-2.5-flash-lite"
+    url = f"https://generativelanguage.googleapis.com/v1/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     headers = {
         "Content-Type": "application/json"
