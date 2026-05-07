@@ -32,10 +32,9 @@ def read_root():
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # ドキュメントの Stable 指定に基づき 'gemini-2.5-flash' を使用
-    # エンドポイントは最新の v1 を指定します
-    model_id = "gemini-2.5-flash"
-    url = f"https://generativelanguage.googleapis.com/v1/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
+   # ここを Lite に変更
+model_id = "gemini-2.5-flash-lite"
+url = f"https://generativelanguage.googleapis.com/v1/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     headers = {
         "Content-Type": "application/json"
