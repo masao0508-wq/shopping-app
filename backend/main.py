@@ -32,10 +32,9 @@ def read_root():
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # CODEX推奨：v1beta と最新モデル gemini-2.0-flash を使用
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    # モデルを 1.5-flash に戻し、URLを v1 に固定（安定版）
+    url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
     
-    # CODEX推奨：APIキーをヘッダー（x-goog-api-key）で渡す
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": GEMINI_API_KEY
