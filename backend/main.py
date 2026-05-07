@@ -23,44 +23,48 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 class MenuRequest(BaseModel):
     store: str
     stock: list
-    must_use: str  # 必須食材
+    must_use: str
     needs_lunch: list
-    use_bento: bool
+    # NGが出た日とその日のメニュー名を送ることで、ピンポイントで差し替え提案を可能にします
+    rejected_menus: list = [] 
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
     model_id = "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
-    # プロンプトにアレルギー情報と必須食材の指示を追加
     prompt_text = f"""
-    あなたは献立作成のプロです。4人家族（50代夫婦、10代2人）向けに献立を作成してください。
+    献立アドバイザーとして、4人家族（50代夫婦、10代2人）の1週間分（7日分）の献立を作成してください。
     
-    【重要：制限事項】
-    - アレルギーのため「エビ、カニ、タコ、イカ」は絶対に含めないでください。
+    【厳守事項：アレルギー】
+    - エビ、カニ、タコ、イカは絶対に使用禁止です。
     
     【条件】
     - スーパー: {req.store}
-    - 在庫食材: {', '.join(req.stock)}
-    - 優先・必須食材: {req.must_use} (この食材を積極的に複数のメニューに組み込んでください)
+    - 在庫: {', '.join(req.stock)}
+    - 必須食材: {req.must_use}（これを重点的に使用）
+    - 却下されたメニュー: {req.rejected_menus}（これらは提案しないでください）
 
-    JSON形式でのみ回答してください。
+    【出力形式】
+    JSONでのみ回答。各メニューにはクックパッド等のレシピ検索リンク（URLエンコードされた検索用リンク）を含めてください。
     {{
       "score": 9,
-      "usage_tips": "必須食材を活かしたバリエーション豊かなメニューです。",
+      "usage_tips": "アドバイス...",
       "menu": [
         {{
           "day": "月",
           "name": "料理名",
           "is_easy": true,
-          "bento_tip": "詰め方のコツ",
-          "volume_tip": "ボリュームアップのコツ"
+          "bento_tip": "...",
+          "volume_tip": "...",
+          "recipe_url": "https://cookpad.com/search/料理名"
         }}
       ],
       "shopping_list": [
-        {{ "item": "食材名", "amount": "数量" }}
+        {{ "item": "食材名", "amount": 100, "unit": "g" }} 
       ]
     }}
+    ※計算のため、amountは数値だけで返してください。
     """
     
     payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
@@ -71,11 +75,7 @@ def generate_menu(req: MenuRequest):
         raw_text = res_data['candidates'][0]['content']['parts'][0]['text']
         match = re.search(r'\{.*\}', raw_text, re.DOTALL)
         if match:
-            data = json.loads(match.group())
-            # 昼食フラグの初期化
-            for i, m in enumerate(data.get("menu", [])):
-                m["lunch"] = "昨日の残り" if i in req.needs_lunch else None
-            return data
+            return json.loads(match.group())
         return json.loads(raw_text)
     except Exception as e:
         return {"error": str(e)}
