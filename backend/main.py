@@ -28,19 +28,29 @@ class MenuRequest(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"status": "ok"}
+    return {"status": "ok", "message": "Backend is running"}
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # リンク先の記事を参考に、v1 の安定版エンドポイントを使用
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    # CODEX推奨：v1beta と最新モデル gemini-2.0-flash を使用
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     
-    headers = {'Content-Type': 'application/json'}
+    # CODEX推奨：APIキーをヘッダー（x-goog-api-key）で渡す
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY
+    }
     
-    prompt = f"1週間の献立表をJSON形式で作成してください。条件: 家族4人、店:{req.store}、在庫:{req.stock}"
+    # プロンプト（文字化け対策のため、シンプルな記述を心がけています）
+    prompt = f"Create a 7-day meal plan in JSON. Family of 4, Store: {req.store}, Stock: {', '.join(req.stock)}. Use Japanese for food names."
     
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }],
+        "generationConfig": {
+            "response_mime_type": "application/json"
+        }
     }
 
     try:
@@ -48,10 +58,12 @@ def generate_menu(req: MenuRequest):
         res_data = response.json()
 
         if response.status_code != 200:
-            return {"error": f"API Error {response.status_code}: {res_data}"}
+            return {"error": f"API Error {response.status_code}", "detail": res_data}
 
-        # JSON抽出
+        # Gemini 2.0系のレスポンス構造からテキストを抽出
         text = res_data['candidates'][0]['content']['parts'][0]['text']
+        
+        # JSON部分を抽出して返却
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             return json.loads(match.group())
