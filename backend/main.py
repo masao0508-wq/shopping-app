@@ -32,41 +32,41 @@ def read_root():
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # ご希望の通り gemini-2.5-flash で固定
-    # 400エラーを防ぐため、エンドポイントを v1beta に設定
     model_id = "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     headers = {"Content-Type": "application/json"}
     
-    # 400エラーの元となった generationConfig を削除し、
-    # プロンプト内で「JSONだけで返して」と強く指示します
+    # 指示を具体的にし、栄養スコアや買い物リストの計算をAIに命じます
     prompt_text = f"""
-    4人家族（50代夫婦、10代2人）の1週間の献立表を日本語で作成してください。
-    スーパー: {req.store}
-    現在の在庫: {', '.join(req.stock)}
-
-    必ず以下のJSON形式のみを出力してください。説明や挨拶は不要です。
+    あなたはプロの献立アドバイザーです。4人家族（50代夫婦、10代2人）向けに
+    {req.store}で買える食材を活かした1週間の献立を作成してください。
+    
+    【条件】
+    - 在庫食材を優先して使うこと: {', '.join(req.stock)}
+    - お弁当が必要な場合、夕食の残りを活用する工夫を含める。
+    - 栄養バランス（PFCバランス、ビタミン、塩分）を考慮する。
+    
+    必ず以下のJSON形式でのみ回答してください。
     {{
       "menu": [
-        {{ "day": "月曜日", "dish": "料理名", "ingredients": ["材料1", "材料2"] }},
-        {{ "day": "火曜日", "dish": "料理名", "ingredients": ["材料1", "材料2"] }},
-        {{ "day": "水曜日", "dish": "料理名", "ingredients": ["材料1", "材料2"] }},
-        {{ "day": "木曜日", "dish": "料理名", "ingredients": ["材料1", "材料2"] }},
-        {{ "day": "金曜日", "dish": "料理名", "ingredients": ["材料1", "材料2"] }},
-        {{ "day": "土曜日", "dish": "料理名", "ingredients": ["材料1", "材料2"] }},
-        {{ "day": "日曜日", "dish": "料理名", "ingredients": ["材料1", "材料2"] }}
+        {{ 
+          "day": "月曜日", 
+          "dish": "メイン料理名", 
+          "side": "副菜名",
+          "nutrition_score": 95, 
+          "ingredients": ["材料1", "材料2"],
+          "comment": "奥様への一言アドバイス（時短ポイントなど）"
+        }}
+        // これを日曜日まで繰り返す
       ],
-      "shopping_list": ["買うべきもの1", "買うべきもの2"]
+      "total_nutrition_avg": 90,
+      "shopping_list": ["食材名(数量)", "食材名(数量)"]
     }}
     """
     
     payload = {
-        "contents": [
-            {
-                "parts": [{"text": prompt_text}]
-            }
-        ]
+        "contents": [{"parts": [{"text": prompt_text}]}]
     }
 
     try:
@@ -74,22 +74,18 @@ def generate_menu(req: MenuRequest):
         res_data = response.json()
 
         if response.status_code != 200:
-            print(f"DEBUG API Error Detail: {res_data}")
-            return {
-                "error": f"API Error {response.status_code}",
-                "message": res_data.get("error", {}).get("message", "Request Failed")
-            }
+            return {"error": f"API Error {response.status_code}", "message": res_data.get("error", {}).get("message")}
 
-        # テキスト回答を抽出
         raw_text = res_data['candidates'][0]['content']['parts'][0]['text']
         
-        # ```json ... ``` のようなマークダウン記法が含まれていても抽出できるように正規表現を使用
+        # AIがJSON以外の文字を混ぜても抽出できるようにする
         match = re.search(r'\{.*\}', raw_text, re.DOTALL)
         if match:
-            return json.loads(match.group())
+            parsed_data = json.loads(match.group())
+            # フロントエンドの期待する構造に微調整（必要に応じて）
+            return parsed_data
         
         return json.loads(raw_text)
 
     except Exception as e:
-        print(f"Internal Error: {str(e)}")
-        return {"error": "Internal Error", "message": str(e)}
+        return {"error": "Processing Error", "message": str(e)}
