@@ -1,4 +1,50 @@
-# --- main.py のプロンプト部分を以下に差し替え ---
+import os
+import json
+import re
+import requests
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Dict
+from dotenv import load_dotenv
+
+load_dotenv()
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+class MenuRequest(BaseModel):
+    store: str
+    stock: List[str]
+    must_use: str
+    needs_lunch: List[int] = []
+    use_bento: bool
+    rejected_menus: List[str] = []
+    volume_adjustments: Dict[str, float] = {}
+
+@app.get("/")
+def read_root():
+    return {"status": "ok", "api_key_loaded": bool(GEMINI_API_KEY)}
+
+@app.post("/generate_menu")
+def generate_menu(req: MenuRequest):
+    model_id = "gemini-2.5-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
+    headers = {"Content-Type": "application/json"}
+    
+    adj_text = ""
+    if req.volume_adjustments:
+        for idx, mult in req.volume_adjustments.items():
+            adj_text += f"- インデックス{idx}の日は材料を{mult}倍に計算\n"
+
     prompt_text = f"""
     あなたはプロの献立アドバイザーです。4人家族向けの1週間の献立をJSONで作成してください。
     
@@ -7,35 +53,44 @@
     - ごく簡単な料理（焼くだけ、炒めるだけ等）: 週2日
     - 本格的な料理: 週2日
     - 昼ごはん（指定時）: 既製品または超簡単なもの
-
+    
     【食材・アレルギー】
     - 禁止: エビ、カニ、タコ、イカ
     - スーパー: {req.store}（業務スーパー時は1kgポテトサラダ等の大容量惣菜を副菜に活用）
     
     【分量計算】
-    - 既製品を使う場合、その「パッケージ記載の標準分量」をベースに4人分を算出。
-    - 指示 {adj_text} がある場合、買い物リストの数値を必ずその倍率で加算すること。
+    - 既製品を使う場合、そのパッケージ記載の標準分量をベースに4人分を算出。
+    - 指示 {adj_text} がある場合、買い物リストの数値を必ずその倍率で計算して反映すること。
 
     【出力ルール】
-    1. "menu"内の料理は「main（主菜）」と「side（副菜）」を明確に分けて記述。
-    2. usage_tips は3行以内。
-    3. 昼ごはんボタン用の提案も含めること。
+    1. usage_tips は、栄養・節約・効率のポイントを必ず「3行以内」で簡潔に。
+    2. JSON構造のみを返すこと。
 
-    JSON構造:
     {{
       "score": 9,
-      "usage_tips": "3行以内のコツ",
+      "usage_tips": "1行目\\n2行目\\n3行目",
       "menu": [
         {{ 
           "day": "月", 
-          "main": "料理名", 
+          "main": "主菜名", 
           "side": "副菜名（業スー惣菜含む）", 
+          "type": "既製品",
           "is_easy": true, 
-          "type": "既製品/簡単/本格",
-          "bento_tip": "...", 
-          "recipe_url": "..." 
+          "recipe_url": "https://cookpad.com/search/主菜名" 
         }}
       ],
       "shopping_list": [ {{ "item": "食材名", "amount": 100, "unit": "g" }} ]
     }}
     """
+    
+    payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        res_data = response.json()
+        if "candidates" not in res_data:
+            return {"error": "API_ERROR", "message": res_data.get("error", {}).get("message", "Quota Exceeded")}
+        raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        json_match = re.search(r'(\{.*\})', raw_text, re.DOTALL)
+        return json.loads(json_match.group(1)) if json_match else json.loads(raw_text)
+    except Exception as e:
+        return {"error": "SERVER_ERROR", "message": str(e)}
