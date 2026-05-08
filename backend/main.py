@@ -5,7 +5,7 @@ import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import List, Dict
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,7 +22,7 @@ app.add_middleware(
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 class MenuRequest(BaseModel):
-    store: str = "ロピア" # ロピア or 業務スーパー
+    store: str = "ロピア"
     stock: List[str] = []
     rejected_menus: List[str] = []
     volume_adjustments: Dict[str, float] = {}
@@ -36,29 +36,28 @@ def generate_menu(req: MenuRequest):
     あなたはプロの献立アドバイザーです。4人家族向けの1週間の献立をJSONで作成してください。
     
     【買い物先: {req.store}】
-    - {req.store}で安く手に入る食材や既製品をベースにしてください。
-    - 業務スーパーの場合: 1kgポテトサラダ、冷凍野菜、パウチのカレーや煮物、皿うどんの素等を活用。
-    - ロピアの場合: 自社製焼肉のタレ、丸ごと煮豚、オリジナル惣菜、大容量パック肉を活用。
+    - 業務スーパー: 1kg惣菜、冷凍野菜、皿うどん、パウチ煮物等を活用。
+    - ロピア: 自社製タレ、大容量パック肉、オリジナル惣菜を活用。
 
-    【献立構成（週7日）】
-    1. 既製品ベース（週3）: カレー、シチュー、皿うどん、鍋の素、麻婆豆腐の素、パスタソース等。
-    2. 簡単料理（週2）: 味付け肉を焼くだけ、カット野菜と肉の炒めもの等（味付けは既製のタレ）。
-    3. 本格料理（週2）: 煮込み料理や手作りおかず。
+    【献立バランス】
+    - 既製品ベース（週3）: 市販の素（カレー、シチュー、鍋、麻婆等）を使用。
+    - 簡単料理（週2）: 既成のタレで焼くだけ・炒めるだけ。
+    - 本格料理（週2）: 手作りおかず。
     
-    【ルール】
-    - 分量は既製品（パッケージ）の標準的な4人前表記に従う。
-    - 主菜(main)と副菜(side)は完全に分けて記載。
-    - 業務スーパー選択時は、副菜に1kg惣菜シリーズを積極的に採用。
-    - 冷蔵庫にあるもの: {req.stock}
-    - NGリスト: {req.rejected_menus}
+    【重要ルール】
+    - レシピ(recipe)欄には、必ず使用する材料の「分量」を明記してください。
+    - 既製品を使用する場合、パッケージ裏面の標準的な作り方を記載してください。
+    - 主菜(main)と副菜(side)を分けて出力。
+    - NG食材: エビ、カニ、タコ、イカ
+    - NGメニュー: {req.rejected_menus}
     
     応答はJSONのみ。
     {{
       "menu": [
         {{ 
           "day": "月", 
-          "main": {{ "name": "主菜名(既製品名等)", "recipe": "パッケージ通りに作る手順" }},
-          "side": {{ "name": "副菜名", "recipe": "盛り付けや簡単な手順" }},
+          "main": {{ "name": "名", "recipe": "【材料(4人分)】...【手順】..." }},
+          "side": {{ "name": "名", "recipe": "【材料(4人分)】...【手順】..." }},
           "type": "既製品/簡単/本格"
         }}
       ],
