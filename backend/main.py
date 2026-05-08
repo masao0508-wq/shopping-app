@@ -22,11 +22,12 @@ app.add_middleware(
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+# backend/main.py の MenuRequest クラスを以下のように書き換えてください
 class MenuRequest(BaseModel):
-    store: str
-    stock: List[str]
-    must_use: str
-    use_bento: bool
+    store: str = "ロピア"
+    stock: List[str] = []
+    must_use: str = ""
+    use_bento: bool = True
     rejected_menus: List[str] = []
     volume_adjustments: Dict[str, float] = {}
 
