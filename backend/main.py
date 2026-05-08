@@ -43,17 +43,20 @@ def generate_menu(req: MenuRequest):
     for idx, mult in req.volume_adjustments.items():
         adj_text += f"- インデックス{idx}の日の材料を{mult}倍で算出\n"
 
+# --- backend/main.py の prompt_text 部分を修正 ---
     prompt_text = f"""
-    あなたはプロの献立アドバイザーです。4人家族向けの1週間の献立JSONを作成してください。
+    あなたはプロの献立アドバイザーです。
+    
+    【最優先事項】
+    指示 {adj_text} がある場合、現在の献立（メニュー名）は一切変更せず、
+    指定された倍率に基づいて「shopping_list」内の数値（amount）だけを正確に修正して返してください。
     
     【ルール】
     - 禁止食材: エビ、カニ、タコ、イカ
     - スーパー: {req.store}
-    - 各料理に "recipe"（手順）を必ず含める。
-    - 指示 {adj_text} があれば分量をその倍率で計算。
-    - NGリスト {req.rejected_menus} は避ける。
-
-    JSON構造:
+    - 買い物リストには「調味料」も含めてください。
+    
+    JSON構造（必ずこの形式を維持）:
     {{
       "score": 9,
       "usage_tips": "3行以内のコツ",
