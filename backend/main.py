@@ -31,8 +31,8 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # 最新の Gemini 2.0 Flash を使用
-    model_id = "gemini-2.0-flash" 
+    # Gemini 2.5 Flash 固定
+    model_id = "gemini-2.5-flash" 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     adj_text = ""
@@ -45,11 +45,12 @@ def generate_menu(req: MenuRequest):
     【ルール】
     - 禁止食材: エビ、カニ、タコ、イカ
     - スーパー: {req.store}
+    - 冷蔵庫にあるもの: {req.stock}
     - 指示: {adj_text}
+    - NGリスト: {req.rejected_menus}
     
-    応答は解説を一切含まず、純粋なJSONオブジェクト1つだけを出力してください。
+    応答は必ず以下のJSON構造に従い、解説は一切含めないでください。
     
-    JSON構造:
     {{
       "score": 9,
       "usage_tips": "コツ",
@@ -68,16 +69,15 @@ def generate_menu(req: MenuRequest):
     
     payload = {
         "contents": [{"parts": [{"text": prompt_text}]}],
-        # 安全フィルターをオフに近づけて回答拒否（空の応答）を防ぐ
+        "generationConfig": {
+            "response_mime_type": "application/json"
+        },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-        ],
-        "generationConfig": {
-            "response_mime_type": "application/json" # JSONモードを強制
-        }
+        ]
     }
     
     try:
@@ -88,14 +88,19 @@ def generate_menu(req: MenuRequest):
             return {"error": "GOOGLE_API_ERROR", "message": res_data["error"].get("message")}
 
         if "candidates" not in res_data or not res_data["candidates"]:
-            return {"error": "API_EMPTY", "message": "AIが回答を生成できませんでした。安全設定を確認してください。"}
+            return {"error": "API_EMPTY", "message": "AIが回答を生成できませんでした。"}
             
         raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
         
-        # JSONの抽出ロジック
+        # JSON抽出
         json_match = re.search(r'({.*})', raw_text, re.DOTALL)
         if json_match:
-            return json.loads(json_match.group(1))
+            clean_json = json.loads(json_match.group(1))
+            # 必須項目の補完
+            if "menu" not in clean_json: clean_json["menu"] = []
+            if "shopping_list" not in clean_json: clean_json["shopping_list"] = []
+            if "stock" not in clean_json: clean_json["stock"] = []
+            return clean_json
         else:
             return {"error": "PARSE_ERROR", "message": "JSON形式が見つかりません。"}
             
