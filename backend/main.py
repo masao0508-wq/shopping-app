@@ -11,14 +11,13 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
-# backend/main.py の middleware 部分をこのように書き換えてみてください
+# CORS設定をさらに広めに設定
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # すべてのオリジンを許可
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -40,26 +39,19 @@ def generate_menu(req: MenuRequest):
     model_id = "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
-    # 分量調整のテキスト生成
     adj_text = ""
     for idx, mult in req.volume_adjustments.items():
         adj_text += f"- インデックス{idx}の日の材料を{mult}倍で算出\n"
 
-    # プロンプト（必ず関数内で定義）
     prompt_text = f"""
     あなたはプロの献立アドバイザーです。4人家族向けの1週間の献立JSONを作成してください。
-
-    【基本構成】
-    - 既製品ベース（カレー、シチュー、鍋等の素）: 週3日
-    - ごく簡単な料理（焼くだけ、炒めるだけ等）: 週2日
-    - 本格的な料理: 週2日
-
+    
     【ルール】
-    - 禁止: エビ、カニ、タコ、イカ
+    - 禁止食材: エビ、カニ、タコ、イカ
     - スーパー: {req.store}
-    - 外部リンクは禁止。レシピ（材料と手順）を各料理に含めること。
-    - 指示 {adj_text} がある場合、買い物リストの数値を必ずその倍率で計算すること。
-    - NGリスト {req.rejected_menus} の料理は避け、栄養バランスを維持した代替案を出すこと。
+    - 各料理に "recipe"（手順）を必ず含める。
+    - 指示 {adj_text} があれば分量をその倍率で計算。
+    - NGリスト {req.rejected_menus} は避ける。
 
     JSON構造:
     {{
@@ -78,18 +70,33 @@ def generate_menu(req: MenuRequest):
     }}
     """
     
-    payload = {{"contents": [{{"parts": [{{"text": prompt_text}}]}}]}}
+    # 修正ポイント：二重中括弧を避け、辞書として定義してから渡す
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt_text}
+                ]
+            }
+        ]
+    }
     
     try:
+        # json=payload として渡すことで requests が自動で適切な JSON に変換します
         response = requests.post(url, json=payload, timeout=60)
         res_data = response.json()
         
         if "candidates" not in res_data:
-            return {{"error": "API_ERROR", "message": "Quota exceeded or API error"}}
+            return {"error": "API_ERROR", "message": "APIからの応答が不正です。"}
             
         raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-        json_match = re.search(r'({{.*}})', raw_text, re.DOTALL)
-        return json.loads(json_match.group(1)) if json_match else json.loads(raw_text)
         
+        # JSON部分を抽出
+        json_match = re.search(r'(\{.*\})', raw_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(1))
+        else:
+            return json.loads(raw_text)
+            
     except Exception as e:
-        return {{"error": "SERVER_ERROR", "message": str(e)}}
+        return {"error": "SERVER_ERROR", "message": str(e)}
