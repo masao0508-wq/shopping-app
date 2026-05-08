@@ -43,33 +43,26 @@ def generate_menu(req: MenuRequest):
     for idx, mult in req.volume_adjustments.items():
         adj_text += f"- インデックス{idx}の日の材料を{mult}倍で算出\n"
 
-# --- backend/main.py の prompt_text 部分を修正 ---
+# backend/main.py の prompt_text を以下のように微調整してください
     prompt_text = f"""
     あなたはプロの献立アドバイザーです。
-    
-    【最優先事項】
-    指示 {adj_text} がある場合、現在の献立（メニュー名）は一切変更せず、
-    指定された倍率に基づいて「shopping_list」内の数値（amount）だけを正確に修正して返してください。
+
+    【最優先指示】
+    1. 指示 {adj_text} がある場合、現在の献立名は絶対に変えず、「shopping_list」の分量(amount)のみを倍率通りに増やしてください。
+    2. 冷蔵庫にあるもの {req.stock} は買い物リストから除外するか、不足分のみをリストアップしてください。
+    3. 出力には必ず "stock"（冷蔵庫の在庫リスト）をそのまま含めてください。
     
     【ルール】
     - 禁止食材: エビ、カニ、タコ、イカ
-    - スーパー: {req.store}
-    - 買い物リストには「調味料」も含めてください。
+    - 各料理に "recipe" を含める。
     
-    JSON構造（必ずこの形式を維持）:
+    JSON構造:
     {{
       "score": 9,
-      "usage_tips": "3行以内のコツ",
-      "menu": [
-        {{ 
-          "day": "月", 
-          "main": {{ "name": "主菜名", "recipe": "手順" }},
-          "side": {{ "name": "副菜名", "recipe": "手順" }},
-          "type": "既製品",
-          "is_easy": true
-        }}
-      ],
-      "shopping_list": [ {{ "item": "食材名", "amount": 100, "unit": "g" }} ]
+      "usage_tips": "コツ",
+      "menu": [...],
+      "stock": ["肉", "玉ねぎ"],
+      "shopping_list": [ {{ "item": "食材", "amount": 100, "unit": "g" }} ]
     }}
     """
     
