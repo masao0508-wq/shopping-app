@@ -22,87 +22,60 @@ app.add_middleware(
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 class MenuRequest(BaseModel):
-    store: str = "ロピア"
+    store: str = "ロピア" # ロピア or 業務スーパー
     stock: List[str] = []
-    must_use: str = ""
-    use_bento: bool = True
     rejected_menus: List[str] = []
     volume_adjustments: Dict[str, float] = {}
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # Gemini 2.5 Flash 固定
     model_id = "gemini-2.5-flash" 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
-    adj_text = ""
-    for idx, mult in req.volume_adjustments.items():
-        adj_text += f"- インデックス{idx}の日の材料を{mult}倍で算出\n"
-
     prompt_text = f"""
-    あなたはプロの献立アドバイザーです。4人家族向けの1週間の献立をJSON形式で作成してください。
+    あなたはプロの献立アドバイザーです。4人家族向けの1週間の献立をJSONで作成してください。
+    
+    【買い物先: {req.store}】
+    - {req.store}で安く手に入る食材や既製品をベースにしてください。
+    - 業務スーパーの場合: 1kgポテトサラダ、冷凍野菜、パウチのカレーや煮物、皿うどんの素等を活用。
+    - ロピアの場合: 自社製焼肉のタレ、丸ごと煮豚、オリジナル惣菜、大容量パック肉を活用。
+
+    【献立構成（週7日）】
+    1. 既製品ベース（週3）: カレー、シチュー、皿うどん、鍋の素、麻婆豆腐の素、パスタソース等。
+    2. 簡単料理（週2）: 味付け肉を焼くだけ、カット野菜と肉の炒めもの等（味付けは既製のタレ）。
+    3. 本格料理（週2）: 煮込み料理や手作りおかず。
     
     【ルール】
-    - 禁止食材: エビ、カニ、タコ、イカ
-    - スーパー: {req.store}
+    - 分量は既製品（パッケージ）の標準的な4人前表記に従う。
+    - 主菜(main)と副菜(side)は完全に分けて記載。
+    - 業務スーパー選択時は、副菜に1kg惣菜シリーズを積極的に採用。
     - 冷蔵庫にあるもの: {req.stock}
-    - 指示: {adj_text}
     - NGリスト: {req.rejected_menus}
     
-    応答は必ず以下のJSON構造に従い、解説は一切含めないでください。
-    
+    応答はJSONのみ。
     {{
-      "score": 9,
-      "usage_tips": "コツ",
       "menu": [
         {{ 
           "day": "月", 
-          "main": {{ "name": "主菜名", "recipe": "手順" }},
-          "side": {{ "name": "副菜名", "recipe": "手順" }},
-          "type": "通常"
+          "main": {{ "name": "主菜名(既製品名等)", "recipe": "パッケージ通りに作る手順" }},
+          "side": {{ "name": "副菜名", "recipe": "盛り付けや簡単な手順" }},
+          "type": "既製品/簡単/本格"
         }}
       ],
-      "stock": {req.stock},
-      "shopping_list": [ {{ "item": "食材名", "amount": 100, "unit": "g" }} ]
+      "shopping_list": [ {{ "item": "食材名", "amount": 1, "unit": "個/g" }} ],
+      "stock": {req.stock}
     }}
     """
     
     payload = {
         "contents": [{"parts": [{"text": prompt_text}]}],
-        "generationConfig": {
-            "response_mime_type": "application/json"
-        },
-        "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-        ]
+        "generationConfig": { "response_mime_type": "application/json" }
     }
     
     try:
         response = requests.post(url, json=payload, timeout=60)
         res_data = response.json()
-        
-        if "error" in res_data:
-            return {"error": "GOOGLE_API_ERROR", "message": res_data["error"].get("message")}
-
-        if "candidates" not in res_data or not res_data["candidates"]:
-            return {"error": "API_EMPTY", "message": "AIが回答を生成できませんでした。"}
-            
         raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-        
-        # JSON抽出
-        json_match = re.search(r'({.*})', raw_text, re.DOTALL)
-        if json_match:
-            clean_json = json.loads(json_match.group(1))
-            # 必須項目の補完
-            if "menu" not in clean_json: clean_json["menu"] = []
-            if "shopping_list" not in clean_json: clean_json["shopping_list"] = []
-            if "stock" not in clean_json: clean_json["stock"] = []
-            return clean_json
-        else:
-            return {"error": "PARSE_ERROR", "message": "JSON形式が見つかりません。"}
-            
+        return json.loads(re.search(r'({.*})', raw_text, re.DOTALL).group(1))
     except Exception as e:
         return {"error": "SERVER_ERROR", "message": str(e)}
