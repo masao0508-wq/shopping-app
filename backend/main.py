@@ -29,13 +29,10 @@ class MenuRequest(BaseModel):
     rejected_menus: List[str] = []
     volume_adjustments: Dict[str, float] = {}
 
-@app.get("/")
-def read_root():
-    return {"status": "ok", "api_key_loaded": bool(GEMINI_API_KEY)}
-
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    model_id = "gemini-2.0-flash" # 最新モデル
+    # 最新の Gemini 2.0 Flash を使用
+    model_id = "gemini-2.0-flash" 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     adj_text = ""
@@ -48,11 +45,9 @@ def generate_menu(req: MenuRequest):
     【ルール】
     - 禁止食材: エビ、カニ、タコ、イカ
     - スーパー: {req.store}
-    - 冷蔵庫にあるもの: {req.stock}（これらは買い物リストから除外するか、不足分のみ記載）
     - 指示: {adj_text}
-    - NGリスト: {req.rejected_menus}
     
-    【重要】応答は解説を一切含まず、純粋なJSONオブジェクト1つだけを出力してください。
+    応答は解説を一切含まず、純粋なJSONオブジェクト1つだけを出力してください。
     
     JSON構造:
     {{
@@ -63,38 +58,46 @@ def generate_menu(req: MenuRequest):
           "day": "月", 
           "main": {{ "name": "主菜名", "recipe": "手順" }},
           "side": {{ "name": "副菜名", "recipe": "手順" }},
-          "type": "通常",
-          "is_easy": true
+          "type": "通常"
         }}
       ],
-      "stock": ["冷蔵庫の在庫"],
+      "stock": {req.stock},
       "shopping_list": [ {{ "item": "食材名", "amount": 100, "unit": "g" }} ]
     }}
     """
     
     payload = {
-        "contents": [{"parts": [{"text": prompt_text}]}]
+        "contents": [{"parts": [{"text": prompt_text}]}],
+        # 安全フィルターをオフに近づけて回答拒否（空の応答）を防ぐ
+        "safetySettings": [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+        ],
+        "generationConfig": {
+            "response_mime_type": "application/json" # JSONモードを強制
+        }
     }
     
     try:
         response = requests.post(url, json=payload, timeout=60)
         res_data = response.json()
         
-        if "candidates" not in res_data:
-            return {"error": "API_ERROR", "message": "APIからの応答が空です。"}
+        if "error" in res_data:
+            return {"error": "GOOGLE_API_ERROR", "message": res_data["error"].get("message")}
+
+        if "candidates" not in res_data or not res_data["candidates"]:
+            return {"error": "API_EMPTY", "message": "AIが回答を生成できませんでした。安全設定を確認してください。"}
             
         raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
         
-        # JSON部分を抽出
+        # JSONの抽出ロジック
         json_match = re.search(r'({.*})', raw_text, re.DOTALL)
         if json_match:
-            clean_json = json.loads(json_match.group(1))
-            # 必須フィールドの補完
-            for field in ["menu", "shopping_list", "stock"]:
-                if field not in clean_json: clean_json[field] = []
-            return clean_json
+            return json.loads(json_match.group(1))
         else:
-            return {"error": "PARSE_ERROR", "message": "JSON形式のデータが見つかりませんでした。"}
+            return {"error": "PARSE_ERROR", "message": "JSON形式が見つかりません。"}
             
     except Exception as e:
         return {"error": "SERVER_ERROR", "message": str(e)}
