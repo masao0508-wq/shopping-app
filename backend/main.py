@@ -11,12 +11,14 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
+# backend/main.py の middleware 部分をこのように書き換えてみてください
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # すべてのオリジンを許可
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
