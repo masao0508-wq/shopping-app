@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
-# CORS設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,44 +29,38 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # 最新モデル ID: 以前の1.5でのエラーと最新リストを反映し、2.0-flashを選択
-    model_id = "gemini-2.0-flash" 
+    # 【最優先】ユーザー様の環境で最も安定していたIDに固定
+    model_id = "gemini-2.5-flash" 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     store_hints = {
-        "ロピア": "みなもと牛/豚、自社製タレ、モンスターバーガー、冷凍ピザ、PBパスタソース、大容量パック。",
-        "業務スーパー": "1kg惣菜、冷凍野菜、皿うどんの素、麻婆豆腐の素、パウチ煮物、冷凍揚げ物、大容量パウチ。"
+        "ロピア": "みなもと牛、自社製タレ、大容量パック、PBパスタソース、冷凍ピザ、モンスターバーガー。",
+        "業務スーパー": "1kg惣菜、冷凍野菜、パウチ煮物、冷凍揚げ物、大容量調味料、皿うどんの素。"
     }
 
     calc_instruction = ""
     if req.current_menu_names:
         menu_summary = "\n".join([f"{m['day']}: {m['main']} / {m['side']}" for m in req.current_menu_names])
-        calc_instruction = f"\n重要：以下のメニューの「4人分」の材料のみを正確に買い物リストに計上してください：\n{menu_summary}"
+        calc_instruction = f"\n重要：以下のメニューに基づき、「4人分」の正確な買い物リストのみを計算して出力してください：\n{menu_summary}"
 
     prompt_text = f"""
-    あなたは献立アプリ『Kon-Date』のアドバイザーです。
-    【店舗: {req.store}】活用製品: {store_hints.get(req.store)}
-    【ルール】
-    1. 構成: 既製品ベース(3日)、簡単料理(2日)、本格料理(2日)。「シチュー」「皿うどん」「カレー」「鍋」「麻婆豆腐」等の既製品を優先。
-    2. 昼ごはん: 既製品ベース（うどん、パウチ、丼等）を「lunch」項目に必ず含める。
-    3. 揚げ物: 週1回以下に制限。
-    4. 禁止食材: エビ、カニ、タコ、イカ。
-    5. レシピ: 4人分で材料・手順を詳細に。
+    あなたは献立アプリ『Kon-Date』の専門家です。
+    【店舗: {req.store}】 特徴: {store_hints.get(req.store)}
+    【制約】
+    1. 構成: 既製品ベース(3日)、簡単料理(2日)、本格(2日)。
+    2. 昼食: 「lunch」項目に必ず既製品メニュー（うどん、丼、パウチ等）を含める。
+    3. 禁止食材: エビ、カニ、タコ、イカ。
+    4. 揚げ物: 週1回以下。
+    5. レシピ: 全て「4人分」で材料と手順を詳細に。
     6. NGリスト: {req.rejected_menus}
     {calc_instruction}
 
-    【出力形式】JSONのみ。解説不要。
+    出力は必ず以下のJSON形式のみで、解説は一切不要です。
     {{
       "score": 10,
-      "usage_tips": "栄養バランス等のコメント(3行以内)",
+      "usage_tips": "診断コメント(3行以内)",
       "menu": [
-        {{ 
-          "day": "月", 
-          "main": {{"name":"料理名","recipe":"材料・手順"}}, 
-          "side": {{"name":"料理名","recipe":"材料・手順"}},
-          "lunch": {{"name":"料理名","recipe":"材料・手順"}},
-          "type": "既製品" 
-        }}
+        {{ "day": "月", "main": {{"name":"..","recipe":".."}}, "side": {{"name":"..","recipe":".."}}, "lunch": {{"name":"..","recipe":".."}}, "type": ".." }}
       ],
       "shopping_list": [ {{ "item": "食材名", "amount": 1, "unit": "個" }} ]
     }}
@@ -76,8 +69,8 @@ def generate_menu(req: MenuRequest):
     payload = {
         "contents": [{"parts": [{"text": prompt_text}]}],
         "generationConfig": { 
-            "response_mime_type": "application/json",
-            "temperature": 0.8
+            "response_mime_type": "application/json", 
+            "temperature": 0.8 
         }
     }
     
