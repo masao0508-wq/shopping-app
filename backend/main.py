@@ -1,6 +1,5 @@
 import os
 import json
-import re
 import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,45 +28,43 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # 仕様書に基づき gemini-2.5-flash を指定
+    # 【仕様】1.5は絶対に使用せず、gemini-2.5-flashに固定
     model_id = "gemini-2.5-flash" 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     store_hints = {
-        "ロピア": "みなもと牛、自社製タレ、大容量パック、PB商品、冷凍ピザ、モンスターバーガー。",
-        "業務スーパー": "1kg惣菜、冷凍野菜、パウチ煮物、冷凍揚げ物、大容量調味料、皿うどんの素。"
+        "ロピア": "みなもと牛、自社製タレ、大容量肉、PB商品、冷凍ピザ、モンスターバーガー。",
+        "業務スーパー": "1kg惣菜、冷凍野菜、パウチ煮物、冷凍揚げ物、皿うどんの素、大容量調味料。"
     }
-
-    # NGボタン（除外）対応
-    ng_instruction = f"\n【絶対に含めない料理（NG）】: {', '.join(req.rejected_menus)}" if req.rejected_menus else ""
 
     prompt_text = f"""
     あなたは献立アプリ『Kon-Date』の専門家です。
     【店舗: {req.store}】 特徴: {store_hints.get(req.store)}
     【黄金比率】
-    - 既製品ベース(3日): シチュー、皿うどん、カレー、鍋、麻婆豆腐等の素を使用。
-    - 簡単料理(2日): 焼く・炒めるだけ。
-    - 本格料理(2日): 手作り。
+    - 既製品ベース(3日): 市販の素やパウチをメインに使用。
+    - 簡単料理(2日): 焼くだけ・炒めるだけの工程。
+    - 本格料理(2日): 手作りメニュー。
     【制約】
-    1. 昼食: 「lunch」項目に必ず既製品ベース（うどん、パウチ、丼等）を含める。
-    2. 禁止食材: エビ、カニ、タコ、イカ。
+    1. 昼食: 「lunch」項目に必ず既製品（麺、丼、パウチ等）を含める。
+    2. 禁止: エビ、カニ、タコ、イカ。
     3. 揚げ物: 週1回以下。
-    4. レシピ: 全て「4人分」で材料・手順を詳細に。{ng_instruction}
+    4. レシピ: 全て「4人分」。材料リストは「- 材料名: 数値 単位」の形式で記述。
+    5. NG: {req.rejected_menus}
 
-    出力はJSON形式のみ。
+    出力は以下のJSON形式のみ。
     {{
       "score": 10,
-      "usage_tips": "3行以内の診断コメント",
+      "usage_tips": "3行以内のAIコメント",
       "menu": [
         {{ "day": "月", "main": {{"name":"..","recipe":".."}}, "side": {{"name":"..","recipe":".."}}, "lunch": {{"name":"..","recipe":".."}}, "type": "既製品" }}
       ],
-      "shopping_list": [ {{ "item": "食材名", "amount": 1, "unit": "個" }} ]
+      "shopping_list": [ {{ "item": "..", "amount": 1, "unit": ".." }} ]
     }}
     """
     
     payload = {
         "contents": [{"parts": [{"text": prompt_text}]}],
-        "generationConfig": { "response_mime_type": "application/json", "temperature": 0.8 }
+        "generationConfig": { "response_mime_type": "application/json", "temperature": 0.7 }
     }
     
     try:
