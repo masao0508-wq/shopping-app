@@ -27,10 +27,13 @@ class MenuRequest(BaseModel):
     rejected_menus: List[str] = []
     current_menu_names: Optional[List[Dict[str, str]]] = None
 
-@app.post("/generate_menu")
-def generate_menu(req: MenuRequest):
-    model_id = "gemini-2.0-flash" 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
+    # (略)
+    @app.post("/generate_menu")
+    def generate_menu(req: MenuRequest):
+        # ここを Gemini 3 Flash に修正しました
+        model_id = "gemini-3-flash" 
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
+    # (略)
     
     store_hints = {
         "ロピア": "みなもと牛/豚、自社製タレ、モンスターバーガー惣菜、冷凍ピザ、PBパスタソース。",
