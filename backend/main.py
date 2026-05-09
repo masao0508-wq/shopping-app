@@ -29,37 +29,45 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    model_id = "gemini-2.5-flash" 
+    model_id = "gemini-2.0-flash" 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
-    store_info = ""
-    if req.store == "ロピア":
-        store_info = "ロピアの強み：『みなもと牛』『自社製みなもと豚』などの大容量肉、自社製タレ、モンスターバーガー等のデカ盛り惣菜、冷凍ピザ。"
-    else:
-        store_info = "業務スーパーの強み：1kg入りのポテトサラダ等のパウチ惣菜、揚げるだけの冷凍フライ、大容量の冷凍野菜、直輸入のパスタ・ソース、皿うどんの素。"
+    store_hints = {
+        "ロピア": "みなもと牛/豚、自社製タレ、モンスターバーガー惣菜、冷凍ピザ、PBパスタソース。",
+        "業務スーパー": "1kg惣菜、冷凍野菜、皿うどんの素、麻婆豆腐の素、パウチ煮物、冷凍揚げ物。"
+    }
+
+    calc_instruction = ""
+    if req.current_menu_names:
+        menu_summary = "\n".join([f"{m['day']}: {m['main']} / {m['side']}" for m in req.current_menu_names])
+        calc_instruction = f"\n重要：以下のメニューの「4人分」の材料のみを正確に買い物リストに計上してください：\n{menu_summary}"
 
     prompt_text = f"""
-    あなたは献立アプリ『Kon-Date』の専門アドバイザーです。4人家族向けの1週間の献立を以下の条件で作成してください。
+    あなたは献立アプリ『Kon-Date』のアドバイザーです。4人家族向けの1週間献立を生成してください。
     
-    【店舗情報: {req.store}】
-    {store_info}
-    - 上記の店舗で実際に販売されている代表的な製品を積極的に献立に組み込んでください。
-
-    【献立ルール】
-    - 揚げ物は週1回（1割以下）に厳選。
-    - 構成: 既製品ベース(3日)、簡単料理(2日)、本格料理(2日)。
-    - 味付け: 市販の「鍋の素」「カレールー」等の活用を前提。
-    - 禁止食材: エビ、カニ、タコ、イカ。
-    - NG済み: {req.rejected_menus}
-
-    応答は以下のJSON形式のみ。
-    - "usage_tips"（栄養バランススコアのコメント）は「3行以内」で簡潔に。
+    【店舗: {req.store}】活用製品: {store_hints.get(req.store)}
     
+    【ルール】
+    1. 構成: 既製品ベース(3日)、簡単料理(2日)、本格料理(2日)。味付けは既製の素を優先。
+    2. 昼ごはん: 既製品や超簡単なもの(うどん、パウチ等)を「lunch」項目に提案。
+    3. 揚げ物: 週1回(1割以下)に制限。
+    4. 禁止: エビ、カニ、タコ、イカ。
+    5. レシピ: 包装記載の分量をベースに、4人分で材料・手順を詳細に。
+    6. NGリスト: {req.rejected_menus}
+    {calc_instruction}
+
+    【出力形式】JSONのみ。usage_tipsは3行以内で。
     {{
       "score": 10,
-      "usage_tips": "コメント（3行以内）",
+      "usage_tips": "栄養バランス等のコメント(3行以内)",
       "menu": [
-        {{ "day": "月", "main": {{"name":"料理名","recipe":"..."}}, "side": {{"name":"料理名","recipe":"..."}}, "type": "既製品" }}
+        {{ 
+          "day": "月", 
+          "main": {{"name":"料理名","recipe":"材料・手順"}}, 
+          "side": {{"name":"料理名","recipe":"材料・手順"}},
+          "lunch": {{"name":"料理名","recipe":"材料・手順"}},
+          "type": "既製品" 
+        }}
       ],
       "shopping_list": [ {{ "item": "食材名", "amount": 1, "unit": "個" }} ]
     }}
