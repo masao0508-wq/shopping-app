@@ -29,13 +29,13 @@ class MenuRequest(BaseModel):
 
 @app.post("/generate_menu")
 def generate_menu(req: MenuRequest):
-    # Gemini 3 Flash モデルを使用
-    model_id = "gemini-3-flash" 
+    # モデルを gemini-2.0-flash に固定
+    model_id = "gemini-2.0-flash" 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     store_hints = {
         "ロピア": "みなもと牛/豚、自社製タレ、モンスターバーガー惣菜、冷凍ピザ、PBパスタソース。",
-        "業務スーパー": "1kg惣菜、冷凍野菜、皿うどんの素、麻婆豆腐の素、パウチ煮物、冷凍揚げ物。"
+        "業務スーパー": "1kg惣菜、冷凍野菜、皿うどんの素、麻婆豆腐の素、パウチ煮物、冷凍揚げ物、冷凍野菜、大容量パウチ惣菜。"
     }
 
     calc_instruction = ""
@@ -44,20 +44,21 @@ def generate_menu(req: MenuRequest):
         calc_instruction = f"\n重要：以下のメニューの「4人分」の材料のみを正確に買い物リストに計上してください：\n{menu_summary}"
 
     prompt_text = f"""
-    あなたは献立アプリ『Kon-Date』のアドバイザーです。4人家族向けの1週間献立を生成してください。
+    あなたは献立アプリ『Kon-Date』のアドバイザーです。
     
     【店舗: {req.store}】活用製品: {store_hints.get(req.store)}
     
     【ルール】
-    1. 構成: 既製品ベース(3日)、簡単料理(2日)、本格料理(2日)。味付けは既製の素を優先。
-    2. 昼ごはん: 既製品や超簡単なもの(うどん、パウチ等)を「lunch」項目に提案。
+    1. 構成: 既製品ベース(3日)、簡単料理(2日)、本格料理(2日)。味付けは「シチューの素」「皿うどん」「カレー」「鍋」「麻婆豆腐」等の既製品を優先。
+    2. 昼ごはん: 既製品ベース（うどん、パウチ、丼等）を「lunch」項目に必ず含める。
     3. 揚げ物: 週1回(1割以下)に制限。
     4. 禁止: エビ、カニ、タコ、イカ。
-    5. レシピ: 包装記載の分量をベースに、4人分で材料・手順を詳細に。
-    6. NGリスト: {req.rejected_menus}
+    5. 副菜: {req.store}の惣菜や冷凍野菜を活用。
+    6. レシピ: 包装記載の分量をベースに、4人分で材料・手順を詳細に記載。
+    7. NGリスト: {req.rejected_menus}
     {calc_instruction}
 
-    【出力形式】JSONのみ。usage_tipsは3行以内で。
+    【出力形式】JSONのみ。解説は不要。usage_tipsは3行以内。
     {{
       "score": 10,
       "usage_tips": "栄養バランス等のコメント(3行以内)",
@@ -76,14 +77,27 @@ def generate_menu(req: MenuRequest):
     
     payload = {
         "contents": [{"parts": [{"text": prompt_text}]}],
-        "generationConfig": { "response_mime_type": "application/json" }
+        "generationConfig": { 
+            "response_mime_type": "application/json",
+            "temperature": 0.7
+        }
     }
     
     try:
         response = requests.post(url, json=payload, timeout=60)
         res_data = response.json()
+        
+        if "candidates" not in res_data:
+            return {"error": "API_ERROR", "message": str(res_data)}
+
         raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-        # ここが関数（def）の中に正しく入っていることが重要です
-        return json.loads(re.search(r'({.*})', raw_text, re.DOTALL).group(1))
+        
+        # JSONの抽出処理を強化
+        json_match = re.search(r'({.*})', raw_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(1))
+        else:
+            return json.loads(raw_text) # そのままパース試行
+            
     except Exception as e:
         return {"error": "SERVER_ERROR", "message": str(e)}
