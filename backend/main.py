@@ -30,6 +30,7 @@ MODEL_ID = "gemini-2.5-flash"
 class MenuRequest(BaseModel):
     store: str
     rejected_menus: List[str] = Field(default_factory=list)
+    required_ingredients: List[str] = Field(default_factory=list)
 
 
 def to_float(value: Any) -> float:
@@ -155,6 +156,7 @@ def parse_gemini_json(text: str) -> Dict[str, Any]:
 
 def build_prompt(req: MenuRequest) -> str:
     rejected = "、".join(req.rejected_menus) if req.rejected_menus else "なし"
+    required = "、".join(req.required_ingredients) if req.required_ingredients else "なし"
     store_rule = (
         "ロピア: 大容量肉（みなもと牛・豚）、自社製タレ、モンスターバーガー等のデカ盛り惣菜、冷凍ピザを活用。"
         if req.store == "ロピア"
@@ -168,6 +170,7 @@ def build_prompt(req: MenuRequest) -> str:
 店舗: {req.store}
 店舗ルール: {store_rule}
 除外する料理: {rejected}
+必須食材: {required}
 
 必須ルール:
 - 既製品ベース3日、簡単料理2日、本格料理2日。
@@ -176,6 +179,8 @@ def build_prompt(req: MenuRequest) -> str:
 - 既製品使用時は包装裏面に一般的に記載される分量・手順に沿う。
 - 各日ごとに main, side, lunch を必ず入れる。
 - lunch は既製品ベースまたは超簡単なものにする。
+- 必須食材が「なし」以外の場合、主菜・副菜・昼食のいずれかに自然な形で週3回以上登場させる。
+- 必須食材は買い物リストと各料理の ingredients に必ず反映する。
 - usage_tips は栄養バランススコアと短いコメントを合計3行以内で書く。
 
 出力はJSONだけにしてください。Markdownや説明文は不要です。
