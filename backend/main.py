@@ -27,13 +27,11 @@ class MenuRequest(BaseModel):
     rejected_menus: List[str] = []
     current_menu_names: Optional[List[Dict[str, str]]] = None
 
-    # (略)
-    @app.post("/generate_menu")
-    def generate_menu(req: MenuRequest):
-        # ここを Gemini 3 Flash に修正しました
-        model_id = "gemini-3-flash" 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
-    # (略)
+@app.post("/generate_menu")
+def generate_menu(req: MenuRequest):
+    # Gemini 3 Flash モデルを使用
+    model_id = "gemini-3-flash" 
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
     
     store_hints = {
         "ロピア": "みなもと牛/豚、自社製タレ、モンスターバーガー惣菜、冷凍ピザ、PBパスタソース。",
@@ -85,6 +83,7 @@ class MenuRequest(BaseModel):
         response = requests.post(url, json=payload, timeout=60)
         res_data = response.json()
         raw_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        # ここが関数（def）の中に正しく入っていることが重要です
         return json.loads(re.search(r'({.*})', raw_text, re.DOTALL).group(1))
     except Exception as e:
         return {"error": "SERVER_ERROR", "message": str(e)}
