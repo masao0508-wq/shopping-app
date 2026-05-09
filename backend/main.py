@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from typing import Any, Dict, List
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 app = FastAPI()
+logger = logging.getLogger("kon_date")
 
 app.add_middleware(
     CORSMiddleware,
@@ -95,137 +97,3 @@ def merge_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         current = merged.setdefault(key, {"item": item, "amount": 0.0, "unit": unit})
         current["amount"] = round(current["amount"] + amount, 1)
     return list(merged.values())
-
-
-def normalize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    menu = payload.get("menu")
-    if not isinstance(menu, list):
-        raise ValueError("menu must be a list")
-
-    normalized_menu = []
-    generated_items = []
-
-    for idx, day in enumerate(menu[:7]):
-        if not isinstance(day, dict):
-            day = {}
-        main = normalize_recipe(day.get("main"))
-        side = normalize_recipe(day.get("side"))
-        lunch = normalize_recipe(day.get("lunch"))
-
-        generated_items.extend(main["ingredients"])
-        generated_items.extend(side["ingredients"])
-
-        normalized_menu.append(
-            {
-                "day": clean_text(day.get("day")) or f"{idx + 1}日目",
-                "type": clean_text(day.get("type")) or "未分類",
-                "main": main,
-                "side": side,
-                "lunch": lunch,
-            }
-        )
-
-    raw_shopping = payload.get("shopping_list")
-    shopping_source = raw_shopping if isinstance(raw_shopping, list) and raw_shopping else generated_items
-
-    return {
-        "usage_tips": clean_text(payload.get("usage_tips")),
-        "menu": normalized_menu,
-        "shopping_list": merge_items(shopping_source),
-    }
-
-
-def build_prompt(req: MenuRequest) -> str:
-    rejected = "、".join(req.rejected_menus) if req.rejected_menus else "なし"
-    store_rule = (
-        "ロピア: 大容量肉（みなもと牛・豚）、自社製タレ、モンスターバーガー等のデカ盛り惣菜、冷凍ピザを活用。"
-        if req.store == "ロピア"
-        else "業務スーパー: 1kg惣菜、冷凍野菜、パウチ煮物、皿うどん、冷凍揚げ物、直輸入パスタソースを活用。"
-    )
-
-    return f"""
-あなたは献立生成アプリ「Kon-Date」の献立エンジンです。
-モデルは gemini-2.5-flash 固定です。4人家族（食べ盛り含む）向けに、指定店舗の強みを活かした1週間分の献立を作ってください。
-
-店舗: {req.store}
-店舗ルール: {store_rule}
-除外する料理: {rejected}
-
-必須ルール:
-- 既製品ベース3日、簡単料理2日、本格料理2日。
-- 揚げ物は週1回以内。
-- エビ、カニ、タコ、イカは絶対に使わない。
-- 既製品使用時は包装裏面に一般的に記載される分量・手順に沿う。
-- 各日ごとに main, side, lunch を必ず入れる。
-- lunch は既製品ベースまたは超簡単なものにする。
-- usage_tips は栄養バランススコアと短いコメントを合計3行以内で書く。
-
-出力はJSONだけにしてください。Markdownや説明文は不要です。
-各 main / side / lunch には recipe とは別に ingredients 配列を必ず入れてください。
-ingredients は買い物リスト再計算に使うため、item, amount, unit を必ず持つ数値データにしてください。
-
-形式:
-{{
-  "usage_tips": "栄養バランス: 82点\\n既製品を使いつつ野菜量を確保。\\n昼は軽めで夕食と重複しにくい構成。",
-  "menu": [
-    {{
-      "day": "月",
-      "type": "既製品ベース",
-      "main": {{
-        "name": "料理名",
-        "recipe": "- 材料名: 1 個\\n手順...",
-        "ingredients": [{{"item": "材料名", "amount": 1, "unit": "個"}}]
-      }},
-      "side": {{
-        "name": "料理名",
-        "recipe": "- 材料名: 200 g\\n手順...",
-        "ingredients": [{{"item": "材料名", "amount": 200, "unit": "g"}}]
-      }},
-      "lunch": {{
-        "name": "料理名",
-        "recipe": "- 材料名: 2 袋\\n手順...",
-        "ingredients": [{{"item": "材料名", "amount": 2, "unit": "袋"}}]
-      }}
-    }}
-  ],
-  "shopping_list": [{{"item": "材料名", "amount": 1, "unit": "個"}}]
-}}
-"""
-
-
-@app.get("/")
-def health_check():
-    return {"status": "ok", "service": "Kon-Date API", "model": MODEL_ID}
-
-
-@app.post("/generate_menu")
-def generate_menu(req: MenuRequest):
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not set")
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_ID}:generateContent?key={GEMINI_API_KEY}"
-
-    try:
-        response = requests.post(
-            url,
-            json={
-                "contents": [{"parts": [{"text": build_prompt(req)}]}],
-                "generationConfig": {
-                    "response_mime_type": "application/json",
-                    "temperature": 0.7,
-                },
-            },
-            timeout=60,
-        )
-        response.raise_for_status()
-        text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-        payload = json.loads(text) if isinstance(text, str) else text
-        return normalize_payload(payload)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Gemini response handling failed: {exc}") from exc
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
